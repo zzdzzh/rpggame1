@@ -11,6 +11,14 @@
       <span>Position: ({{ Math.round(position.x) }}, {{ Math.round(position.y) }})</span>
       <span>Direction: {{ Math.round(direction * 180 / Math.PI) }}°</span>
     </div>
+    <div class="background-selector">
+      <label>背景场景:</label>
+      <select v-model="selectedBackground" @change="changeBackground">
+        <option v-for="bg in backgroundStore.backgroundOptions" :key="bg.id" :value="bg.id">
+          {{ bg.name }}
+        </option>
+      </select>
+    </div>
   </div>
 </template>
 
@@ -19,12 +27,15 @@ import { ref, onMounted, onUnmounted } from 'vue';
 import * as THREE from 'three';
 import { Character } from './entities/Character.js';
 import axios from 'axios';
+import { useBackgroundStore } from '../stores/background.js';
 
+const backgroundStore = useBackgroundStore();
 const gameContainer = ref(null);
 const characterName = ref('Hero1');
 const position = ref({ x: 0, y: 0 });
 const direction = ref(0);
 const lastSyncTime = ref('Never');
+const selectedBackground = ref('bg1');
 
 let scene, camera, renderer;
 let player;
@@ -33,6 +44,7 @@ let lastTime = 0;
 let syncTimer = null;
 let lastRotateTime = 0;
 const rotateCooldown = 150;
+let backgroundTexture = null;
 
 const keys = {
   w: false,
@@ -43,7 +55,7 @@ const keys = {
   e: false
 };
 
-const spriteUrls = [
+const movingSpriteUrls = [
   'src/assets/sprites/1.png',
   'src/assets/sprites/2.png',
   'src/assets/sprites/3.png',
@@ -52,9 +64,41 @@ const spriteUrls = [
   'src/assets/sprites/6.png'
 ];
 
+const idleSpriteUrls = [
+  'src/assets/sprites1/1.png',
+  'src/assets/sprites1/2.png',
+  'src/assets/sprites1/6.png'
+];
+
+async function loadBackgroundTexture(path) {
+  return new Promise((resolve) => {
+    const loader = new THREE.TextureLoader();
+    loader.load(path, (texture) => {
+      texture.wrapS = THREE.RepeatWrapping;
+      texture.wrapT = THREE.RepeatWrapping;
+      texture.repeat.set(1, 1);
+      resolve(texture);
+    }, undefined, () => {
+      console.warn(`Failed to load background: ${path}`);
+      resolve(null);
+    });
+  });
+}
+
 async function init() {
   scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x87ceeb);
+  
+  const bgPath = backgroundStore.getCurrentBackgroundPath();
+  if (bgPath) {
+    backgroundTexture = await loadBackgroundTexture(bgPath);
+    if (backgroundTexture) {
+      scene.background = backgroundTexture;
+    } else {
+      scene.background = new THREE.Color(0x87ceeb);
+    }
+  } else {
+    scene.background = new THREE.Color(0x87ceeb);
+  }
 
   const width = window.innerWidth;
   const height = window.innerHeight;
@@ -73,16 +117,19 @@ async function init() {
   renderer.setSize(width, height);
   gameContainer.value.appendChild(renderer.domElement);
 
-  const gridHelper = new THREE.GridHelper(800, 20, 0x888888, 0x444444);
-  gridHelper.rotation.x = Math.PI / 2;
-  scene.add(gridHelper);
+  if (!backgroundTexture) {
+    const gridHelper = new THREE.GridHelper(800, 20, 0x888888, 0x444444);
+    gridHelper.rotation.x = Math.PI / 2;
+    scene.add(gridHelper);
+  }
 
   const ambientLight = new THREE.AmbientLight(0xffffff, 1);
   scene.add(ambientLight);
 
   player = new Character(
     characterName.value,
-    spriteUrls,
+    movingSpriteUrls,
+    idleSpriteUrls,
     {
       x: 0,
       y: 0,
@@ -99,6 +146,16 @@ async function init() {
   window.addEventListener('resize', handleResize);
 
   animate(0);
+}
+
+async function changeBackground() {
+  const bgPath = backgroundStore.setBackground(selectedBackground.value);
+  if (bgPath) {
+    backgroundTexture = await loadBackgroundTexture(bgPath);
+    if (backgroundTexture) {
+      scene.background = backgroundTexture;
+    }
+  }
 }
 
 function handleKeyDown(event) {
@@ -254,5 +311,39 @@ onUnmounted(() => {
   display: flex;
   justify-content: space-between;
   z-index: 100;
+}
+
+.background-selector {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  background: rgba(0, 0, 0, 0.7);
+  color: white;
+  padding: 10px 15px;
+  border-radius: 8px;
+  font-family: Arial, sans-serif;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.background-selector label {
+  font-size: 14px;
+}
+
+.background-selector select {
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 4px;
+  color: white;
+  padding: 5px 10px;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.background-selector select option {
+  background: #333;
+  color: white;
 }
 </style>
