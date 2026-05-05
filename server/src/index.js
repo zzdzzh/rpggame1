@@ -5,6 +5,7 @@ const http = require('http');
 const { Server } = require('socket.io');
 const sequelize = require('./config/sequelize');
 const characterRoutes = require('./routes/characterRoutes');
+const backgroundRoutes = require('./routes/backgroundRoutes');
 const characterService = require('./services/CharacterService');
 const Character = require('./models/Character');
 
@@ -22,6 +23,7 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 app.use('/api/characters', characterRoutes);
+app.use('/api', backgroundRoutes);
 
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });

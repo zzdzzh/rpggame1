@@ -30,6 +30,18 @@ export class Character {
     this.texture = null;
     this.mesh = null;
     this.ready = false;
+
+    this.hp = options.hp || 100;
+    this.maxHp = options.maxHp || 100;
+    this.attack = options.attack || 10;
+    this.defense = options.defense || 5;
+    this.criticalRate = options.criticalRate || 0.1;
+    this.criticalMultiplier = options.criticalMultiplier || 2.0;
+
+    this.isAlive = true;
+    this.isInCombat = false;
+    this.lastAttackTime = 0;
+    this.attackCooldown = options.attackCooldown || 1000;
   }
 
   static async loadAllTextures(spriteUrls) {
@@ -217,5 +229,38 @@ export class Character {
   setPosition(x, y, z = 0) {
     this.position.set(x, y, z);
     this.mesh.position.copy(this.position);
+  }
+
+  takeDamage(damage) {
+    this.hp = Math.max(0, this.hp - damage);
+    if (this.hp <= 0) {
+      this.isAlive = false;
+    }
+    return damage;
+  }
+
+  canAttack(currentTime) {
+    return currentTime - this.lastAttackTime >= this.attackCooldown;
+  }
+
+  attackTarget(target, currentTime) {
+    if (!this.canAttack(currentTime)) return { hit: false, damage: 0, isCritical: false };
+    
+    const isCritical = Math.random() < this.criticalRate;
+    let damage = this.attack - target.defense;
+    damage = Math.max(1, isCritical ? damage * this.criticalMultiplier : damage);
+    
+    this.lastAttackTime = currentTime;
+    target.takeDamage(damage);
+    
+    return { hit: true, damage: Math.floor(damage), isCritical };
+  }
+
+  getHealthPercent() {
+    return (this.hp / this.maxHp) * 100;
+  }
+
+  setInCombat(inCombat) {
+    this.isInCombat = inCombat;
   }
 }

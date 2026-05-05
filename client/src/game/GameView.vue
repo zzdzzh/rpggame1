@@ -6,6 +6,7 @@
       <p>Q: Up-Left | E: Up-Right | Z: Down-Left | C: Down-Right</p>
       <p>Right-click: Move character to clicked position</p>
       <p>Position will be sent to server every 3 seconds</p>
+      <p class="combat-tip">靠近怪物自动进入战斗！</p>
     </div>
     <div class="status-bar">
       <span>Character: {{ characterName }}</span>
@@ -13,6 +14,9 @@
       <span>Grid: ({{ gridPosition.x }}, {{ gridPosition.y }})</span>
       <span>Terrain: {{ currentTerrain }}</span>
       <span>Direction: {{ facingDirection }}</span>
+      <span class="combat-status" :class="{ 'in-combat': isInCombat }">
+        {{ isInCombat ? '⚔️ 战斗中' : '和平' }}
+      </span>
       <label class="toggle-switch">
         <input type="checkbox" v-model="showGrid" @change="toggleGrid" />
         <span class="slider"></span>
@@ -26,6 +30,21 @@
           {{ bg.name }}
         </option>
       </select>
+    </div>
+    <div class="combat-log" v-if="combatLog.length > 0">
+      <div class="combat-log-title">战斗日志</div>
+      <div class="combat-log-content">
+        <div v-for="(log, index) in combatLog.slice(-5)" :key="index" class="log-entry" :class="{ critical: log.isCritical }">
+          {{ log.message }}
+        </div>
+      </div>
+    </div>
+    <div class="game-over" v-if="gameOver">
+      <div class="game-over-content">
+        <h2>{{ gameOverWin ? '🎉 胜利！' : '💀 失败！' }}</h2>
+        <p>{{ gameOverWin ? '你击败了怪物！' : '你被怪物击败了！' }}</p>
+        <button @click="restartGame">重新开始</button>
+      </div>
     </div>
   </div>
 </template>
@@ -47,9 +66,14 @@ const facingDirection = ref('Right');
 const lastSyncTime = ref('Never');
 const selectedBackground = ref('bg1');
 const showGrid = ref(false);
+const isInCombat = ref(false);
+const combatLog = ref([]);
+const gameOver = ref(false);
+const gameOverWin = ref(false);
 
 let scene, camera, renderer;
 let player;
+let monsters = [];
 let animationFrameId;
 let lastTime = 0;
 let syncTimer = null;
@@ -59,6 +83,11 @@ let terrainManager = null;
 
 let isRightMouseDown = false;
 let targetPosition = null;
+
+const COMBAT_RANGE = 100;
+const HEALTH_BAR_WIDTH = 80;
+const HEALTH_BAR_HEIGHT = 8;
+const HEALTH_BAR_OFFSET = 45;
 
 const keys = {
   w: false,
@@ -86,6 +115,21 @@ const idleSpriteUrls = [
   'src/assets/sprites1/6.png'
 ];
 
+const monster1MovingUrls = [
+  'src/assets/monsters/monster1/1.png',
+  'src/assets/monsters/monster1/2.png',
+  'src/assets/monsters/monster1/3.png',
+  'src/assets/monsters/monster1/4.png',
+  'src/assets/monsters/monster1/5.png',
+  'src/assets/monsters/monster1/6.png'
+];
+
+const monster1IdleUrls = [
+  'src/assets/monsters/monster1/1.png',
+  'src/assets/monsters/monster1/2.png',
+  'src/assets/monsters/monster1/3.png'
+];
+
 const currentTerrain = computed(() => {
   if (!terrainManager) return 'N/A';
   const terrain = terrainManager.getTerrainAtWorld(position.value.x, position.value.y);
@@ -93,19 +137,206 @@ const currentTerrain = computed(() => {
   return `${info.name} (${terrain})`;
 });
 
-async function loadBackgroundTexture(path) {
-  return new Promise((resolve) => {
-    const loader = new THREE.TextureLoader();
-    loader.load(path, (texture) => {
-      texture.wrapS = THREE.RepeatWrapping;
-      texture.wrapT = THREE.RepeatWrapping;
-      texture.repeat.set(1, 1);
-      resolve(texture);
-    }, undefined, () => {
-      console.warn(`Failed to load background: ${path}`);
-      resolve(null);
-    });
+function createHealthBar(character) {
+  const canvas = document.createElement('canvas');
+  canvas.width = HEALTH_BAR_WIDTH;
+  canvas.height = HEALTH_BAR_HEIGHT + 4;
+  
+  const texture = new THREE.CanvasTexture(canvas);
+  const geometry = new THREE.PlaneGeometry(HEALTH_BAR_WIDTH, HEALTH_BAR_HEIGHT + 4);
+  const material = new THREE.MeshBasicMaterial({
+    map: texture,
+    transparent: true
   });
+  
+  const healthBar = new THREE.Mesh(geometry, material);
+  healthBar.position.set(0, HEALTH_BAR_OFFSET, 2);
+  healthBar.renderOrder = 10;
+  
+  character.healthBar = healthBar;
+  character.healthBarCanvas = canvas;
+  character.healthBarTexture = texture;
+  
+  if (character.mesh) {
+    character.mesh.add(healthBar);
+  }
+}
+
+function updateHealthBar(character) {
+  if (!character.healthBarCanvas) return;
+  
+  const ctx = character.healthBarCanvas.getContext('2d');
+  const healthPercent = character.getHealthPercent();
+  
+  ctx.clearRect(0, 0, HEALTH_BAR_WIDTH, HEALTH_BAR_HEIGHT + 4);
+  
+  ctx.fillStyle = '#333';
+  ctx.fillRect(0, 2, HEALTH_BAR_WIDTH, HEALTH_BAR_HEIGHT);
+  
+  const healthColor = healthPercent > 50 ? '#00ff00' : healthPercent > 25 ? '#ffff00' : '#ff0000';
+  ctx.fillStyle = healthColor;
+  ctx.fillRect(2, 4, (HEALTH_BAR_WIDTH - 4) * (healthPercent / 100), HEALTH_BAR_HEIGHT - 4);
+  
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(0, 2, HEALTH_BAR_WIDTH, HEALTH_BAR_HEIGHT);
+  
+  character.healthBarTexture.needsUpdate = true;
+}
+
+async function spawnMonster(monsterType) {
+  if (!terrainManager) return;
+  
+  const { width, height } = terrainManager.getMapDimensions();
+  
+  let validPositions = [];
+  for (let gridY = 0; gridY < height; gridY++) {
+    for (let gridX = 0; gridX < width; gridX++) {
+      const terrainValue = terrainManager.getTerrainAtGrid(gridX, gridY);
+      if (terrainValue !== TerrainManager.TERRAIN_TYPES?.BLOCKED) {
+        const worldPos = terrainManager.gridToWorld(gridX, gridY);
+        const playerPos = player.getPosition();
+        const distance = Math.sqrt(
+          Math.pow(worldPos.x - playerPos.x, 2) + 
+          Math.pow(worldPos.y - playerPos.y, 2)
+        );
+        if (distance > 200) {
+          validPositions.push({ gridX, gridY });
+        }
+      }
+    }
+  }
+  
+  if (validPositions.length === 0) return;
+  
+  const randomIndex = Math.floor(Math.random() * validPositions.length);
+  const { gridX, gridY } = validPositions[randomIndex];
+  
+  let movingUrls, idleUrls;
+  if (monsterType === 1) {
+    movingUrls = monster1MovingUrls;
+    idleUrls = monster1IdleUrls;
+  } else {
+    movingUrls = monster1MovingUrls;
+    idleUrls = monster1IdleUrls;
+  }
+  
+  const worldPos = terrainManager.gridToWorld(gridX, gridY);
+  
+  const monster = new Character(
+    `Monster${monsterType}`,
+    movingUrls,
+    idleUrls,
+    {
+      x: worldPos.x,
+      y: worldPos.y,
+      z: 0,
+      moveSpeed: 50,
+      hp: 50,
+      maxHp: 50,
+      attack: 8,
+      defense: 2,
+      criticalRate: 0.15,
+      criticalMultiplier: 2.0,
+      attackCooldown: 1500
+    }
+  );
+  
+  await monster.init();
+  createHealthBar(monster);
+  monsters.push(monster);
+  scene.add(monster.getMesh());
+}
+
+function addCombatLog(message, isCritical = false) {
+  combatLog.value.push({ message, isCritical, time: Date.now() });
+  if (combatLog.value.length > 20) {
+    combatLog.value.shift();
+  }
+}
+
+async function fetchBackgroundDimensions(filename) {
+  try {
+    const response = await axios.get(`http://localhost:3000/api/backgrounds/${filename}/dimensions`);
+    return response.data;
+  } catch (error) {
+    console.error('Failed to fetch background dimensions:', error);
+    return null;
+  }
+}
+
+async function loadBackgroundTexture(path) {
+  return new Promise(async (resolve) => {
+    const filename = path.split('/').pop();
+    const serverDimensions = await fetchBackgroundDimensions(filename);
+    
+    const img = new Image();
+    img.onload = () => {
+      const loader = new THREE.TextureLoader();
+      loader.load(path, (texture) => {
+        texture.wrapS = THREE.RepeatWrapping;
+        texture.wrapT = THREE.RepeatWrapping;
+        texture.repeat.set(1, 1);
+        
+        if (serverDimensions) {
+          texture.imageWidth = serverDimensions.width;
+          texture.imageHeight = serverDimensions.height;
+          console.log(`Background ${filename} dimensions from server: ${serverDimensions.width}x${serverDimensions.height}`);
+        } else {
+          texture.imageWidth = img.width;
+          texture.imageHeight = img.height;
+          console.log(`Background ${filename} dimensions from image: ${img.width}x${img.height}`);
+        }
+        
+        resolve(texture);
+      }, undefined, () => {
+        console.warn(`Failed to load background: ${path}`);
+        resolve(null);
+      });
+    };
+    img.onerror = () => {
+      console.warn(`Failed to load background image: ${path}`);
+      resolve(null);
+    };
+    img.src = path;
+  });
+}
+
+function getVisibleAreaSize() {
+  if (camera) {
+    return {
+      width: camera.right - camera.left,
+      height: camera.top - camera.bottom
+    };
+  }
+
+  return {
+    width: window.innerWidth,
+    height: window.innerHeight
+  };
+}
+
+function getGridDisplayConfig() {
+  const { width: mapGridWidth, height: mapGridHeight } = terrainManager.getMapDimensions();
+  const visibleArea = getVisibleAreaSize();
+
+  if (!backgroundTexture || !backgroundTexture.imageWidth || !backgroundTexture.imageHeight) {
+    return {
+      cellWidth: visibleArea.width / mapGridWidth,
+      cellHeight: visibleArea.height / mapGridHeight
+    };
+  }
+
+  // 先使用背景图分辨率计算单格像素，再根据可视区域缩放到实际显示大小
+  const bgWidth = backgroundTexture.imageWidth;
+  const bgHeight = backgroundTexture.imageHeight;
+  const scaleX = visibleArea.width / bgWidth;
+  const scaleY = visibleArea.height / bgHeight;
+
+  return {
+    cellWidth: (bgWidth / mapGridWidth) * scaleX,
+    cellHeight: (bgHeight / mapGridHeight) * scaleY
+  };
 }
 
 function createGridVisualization() {
@@ -114,47 +345,51 @@ function createGridVisualization() {
   }
 
   gridGroup = new THREE.Group();
-  const gridSize = terrainManager.getGridSize();
+  const { cellWidth, cellHeight } = getGridDisplayConfig();
+  const textBaseSize = Math.min(cellWidth, cellHeight);
   const { width, height } = terrainManager.getMapDimensions();
-  const mapCenter = terrainManager.getMapCenter();
+  const mapCenterX = (width * cellWidth) / 2;
+  const mapCenterY = (height * cellHeight) / 2;
 
   for (let gridY = 0; gridY < height; gridY++) {
     for (let gridX = 0; gridX < width; gridX++) {
-      const worldPos = terrainManager.gridToWorld(gridX, gridY);
+      const adjustedY = height - 1 - gridY;
+      const worldX = gridX * cellWidth + cellWidth / 2 - mapCenterX;
+      const worldY = adjustedY * cellHeight + cellHeight / 2 - mapCenterY;
       
       const terrainValue = terrainManager.getTerrainAtGrid(gridX, gridY);
       const terrainInfo = terrainManager.getTerrainInfo(terrainValue);
 
-      const geometry = new THREE.BoxGeometry(gridSize - 1, gridSize - 1, 1);
+      const geometry = new THREE.BoxGeometry(Math.max(1, cellWidth - 1), Math.max(1, cellHeight - 1), 1);
       const material = new THREE.MeshBasicMaterial({
         color: terrainInfo.color,
         transparent: true,
-        opacity: 0.3
+        opacity: 0.15
       });
       const tile = new THREE.Mesh(geometry, material);
-      tile.position.set(worldPos.x, worldPos.y, -1);
+      tile.position.set(worldX, worldY, -1);
       gridGroup.add(tile);
 
       const canvas = document.createElement('canvas');
-      canvas.width = 64;
-      canvas.height = 32;
+      canvas.width = Math.max(32, textBaseSize * 0.8);
+      canvas.height = Math.max(16, textBaseSize * 0.4);
       const ctx = canvas.getContext('2d');
       ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-      ctx.fillRect(0, 0, 64, 32);
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
       ctx.fillStyle = '#ffffff';
-      ctx.font = 'bold 14px Arial';
+      ctx.font = `bold ${Math.max(10, textBaseSize * 0.25)}px Arial`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText(terrainValue.toString(), 32, 16);
+      ctx.fillText(terrainValue.toString(), canvas.width / 2, canvas.height / 2);
 
       const texture = new THREE.CanvasTexture(canvas);
-      const textGeometry = new THREE.PlaneGeometry(gridSize * 0.8, gridSize * 0.4);
+      const textGeometry = new THREE.PlaneGeometry(textBaseSize * 0.8, textBaseSize * 0.4);
       const textMaterial = new THREE.MeshBasicMaterial({
         map: texture,
         transparent: true
       });
       const textMesh = new THREE.Mesh(textGeometry, textMaterial);
-      textMesh.position.set(worldPos.x, worldPos.y, 0);
+      textMesh.position.set(worldX, worldY, 0);
       gridGroup.add(textMesh);
     }
   }
@@ -162,22 +397,27 @@ function createGridVisualization() {
   const lineMaterial = new THREE.LineBasicMaterial({ color: 0x000000, opacity: 0.5, transparent: true });
   
   for (let x = 0; x <= width; x++) {
-    const y1 = terrainManager.gridToWorld(0, 0).y - gridSize / 2;
-    const y2 = terrainManager.gridToWorld(0, height - 1).y + gridSize / 2;
+    const lineWorldX = x * cellWidth - mapCenterX;
+    const startWorldY = (height - 1) * cellHeight + cellHeight / 2 - mapCenterY;
+    const endWorldY = cellHeight / 2 - mapCenterY;
+    
     const lineGeometry = new THREE.BufferGeometry().setFromPoints([
-      new THREE.Vector3(x * gridSize - mapCenter.x, y1, 0),
-      new THREE.Vector3(x * gridSize - mapCenter.x, y2, 0)
+      new THREE.Vector3(lineWorldX, startWorldY, 0),
+      new THREE.Vector3(lineWorldX, endWorldY, 0)
     ]);
     const line = new THREE.Line(lineGeometry, lineMaterial);
     gridGroup.add(line);
   }
 
-  for (let gridY = 0; gridY <= height; gridY++) {
-    const adjustedY = height - 1 - gridY;
-    const worldY = adjustedY * gridSize + gridSize / 2 - mapCenter.y;
+  for (let y = 0; y <= height; y++) {
+    const adjustedY = height - 1 - y;
+    const startWorldX = cellWidth / 2 - mapCenterX;
+    const lineWorldY = adjustedY * cellHeight + cellHeight / 2 - mapCenterY;
+    const endWorldX = width * cellWidth - cellWidth / 2 - mapCenterX;
+    
     const lineGeometry = new THREE.BufferGeometry().setFromPoints([
-      new THREE.Vector3(-mapCenter.x, worldY, 0),
-      new THREE.Vector3(mapCenter.x, worldY, 0)
+      new THREE.Vector3(startWorldX, lineWorldY, 0),
+      new THREE.Vector3(endWorldX, lineWorldY, 0)
     ]);
     const line = new THREE.Line(lineGeometry, lineMaterial);
     gridGroup.add(line);
@@ -211,6 +451,7 @@ async function init() {
     backgroundTexture = await loadBackgroundTexture(bgPath);
     if (backgroundTexture) {
       scene.background = backgroundTexture;
+      adjustTerrainToBackground();
     } else {
       scene.background = new THREE.Color(0x87ceeb);
     }
@@ -252,12 +493,22 @@ async function init() {
       x: 0,
       y: 0,
       z: 0,
-      moveSpeed: 200
+      moveSpeed: 200,
+      hp: 200,
+      maxHp: 200,
+      attack: 12,
+      defense: 8,
+      criticalRate: 0.15,
+      criticalMultiplier: 2.0,
+      attackCooldown: 1000
     }
   );
 
   await player.init();
+  createHealthBar(player);
   scene.add(player.getMesh());
+
+  await spawnMonster(1);
 
   window.addEventListener('keydown', handleKeyDown);
   window.addEventListener('keyup', handleKeyUp);
@@ -292,8 +543,18 @@ async function changeBackground() {
     backgroundTexture = await loadBackgroundTexture(bgPath);
     if (backgroundTexture) {
       scene.background = backgroundTexture;
+      adjustTerrainToBackground();
+      if (showGrid.value) {
+        removeGridVisualization();
+        createGridVisualization();
+      }
     }
   }
+}
+
+function adjustTerrainToBackground() {
+  const { cellWidth, cellHeight } = getGridDisplayConfig();
+  terrainManager.setGridSize({ width: cellWidth, height: cellHeight });
 }
 
 function handleKeyDown(event) {
@@ -321,6 +582,14 @@ function handleResize() {
   camera.updateProjectionMatrix();
 
   renderer.setSize(width, height);
+
+  if (terrainManager) {
+    adjustTerrainToBackground();
+  }
+  if (showGrid.value) {
+    removeGridVisualization();
+    createGridVisualization();
+  }
 }
 
 function handleContextMenu(event) {
@@ -354,9 +623,66 @@ function updateTargetPosition(clientX, clientY) {
   const x = clientX - width / 2;
   const y = -(clientY - height / 2);
   
-  if (checkPositionValidity(x, y)) {
-    targetPosition = { x, y };
+  targetPosition = { x, y };
+}
+
+function findSlidingPosition(fromX, fromY, toX, toY) {
+  const dx = toX - fromX;
+  const dy = toY - fromY;
+  const distance = Math.sqrt(dx * dx + dy * dy);
+  
+  if (distance < 1) {
+    return { x: fromX, y: fromY, reached: true };
   }
+  
+  const steps = Math.ceil(distance / 5);
+  const stepX = dx / steps;
+  const stepY = dy / steps;
+  
+  let lastValidX = fromX;
+  let lastValidY = fromY;
+  
+  for (let i = 1; i <= steps; i++) {
+    const checkX = fromX + stepX * i;
+    const checkY = fromY + stepY * i;
+    
+    if (checkPositionValidity(checkX, checkY)) {
+      lastValidX = checkX;
+      lastValidY = checkY;
+    } else {
+      if (lastValidX === fromX && lastValidY === fromY) {
+        const slideX = trySlide(fromX, fromY, dx, dy);
+        if (slideX) {
+          return slideX;
+        }
+      }
+      return { x: lastValidX, y: lastValidY, reached: false };
+    }
+  }
+  
+  return { x: lastValidX, y: lastValidY, reached: true };
+}
+
+function trySlide(fromX, fromY, dx, dy) {
+  const absDx = Math.abs(dx);
+  const absDy = Math.abs(dy);
+  
+  const slideXOnly = absDx > 0 && checkPositionValidity(fromX + Math.sign(dx) * absDx, fromY);
+  const slideYOnly = absDy > 0 && checkPositionValidity(fromX, fromY + Math.sign(dy) * absDy);
+  
+  if (slideXOnly && slideYOnly) {
+    if (absDx >= absDy) {
+      return { x: fromX + Math.sign(dx) * absDx, y: fromY, reached: false };
+    } else {
+      return { x: fromX, y: fromY + Math.sign(dy) * absDy, reached: false };
+    }
+  } else if (slideXOnly) {
+    return { x: fromX + Math.sign(dx) * absDx, y: fromY, reached: false };
+  } else if (slideYOnly) {
+    return { x: fromX, y: fromY + Math.sign(dy) * absDy, reached: false };
+  }
+  
+  return null;
 }
 
 function moveToTarget(deltaTime) {
@@ -372,28 +698,24 @@ function moveToTarget(deltaTime) {
   }
   
   const moveAmount = player.moveSpeed * deltaTime;
-  const moveX = (dx / distance) * moveAmount;
-  const moveY = (dy / distance) * moveAmount;
+  const ratio = Math.min(1, moveAmount / distance);
+  const targetX = playerPos.x + dx * ratio;
+  const targetY = playerPos.y + dy * ratio;
   
-  const newX = player.position.x + moveX;
-  const newY = player.position.y + moveY;
+  const result = findSlidingPosition(playerPos.x, playerPos.y, targetX, targetY);
   
-  if (!checkPositionValidity(newX, newY)) {
-    if (!checkPositionValidity(newX, player.position.y)) {
-      return false;
-    }
-    if (!checkPositionValidity(player.position.x, newY)) {
-      return false;
-    }
+  const movedDist = Math.sqrt(Math.pow(result.x - playerPos.x, 2) + Math.pow(result.y - playerPos.y, 2));
+  if (movedDist < 1) {
+    return false;
   }
   
-  player.position.x = newX;
-  player.position.y = newY;
+  player.position.x = result.x;
+  player.position.y = result.y;
   player.mesh.position.copy(player.position);
   
-  if (moveX < 0) {
+  if (dx < 0) {
     player.setDirectionLeft();
-  } else if (moveX > 0) {
+  } else if (dx > 0) {
     player.setDirectionRight();
   }
   
@@ -408,51 +730,118 @@ function updateMovement(deltaTime, currentTime) {
   }
 
   if (!isMoving) {
-    const oldX = player.position.x;
-    const oldY = player.position.y;
+    let moveX = 0;
+    let moveY = 0;
+    
+    if (keys.w) moveY += 1;
+    if (keys.s) moveY -= 1;
+    if (keys.a) moveX -= 1;
+    if (keys.d) moveX += 1;
+    if (keys.q) { moveX -= 0.707; moveY += 0.707; }
+    if (keys.e) { moveX += 0.707; moveY += 0.707; }
+    if (keys.z) { moveX -= 0.707; moveY -= 0.707; }
+    if (keys.c) { moveX += 0.707; moveY -= 0.707; }
 
-    if (keys.w) {
-      player.moveForward(deltaTime);
-      isMoving = true;
-    }
-    if (keys.s) {
-      player.moveBackward(deltaTime);
-      isMoving = true;
-    }
-    if (keys.a) {
-      player.moveLeft(deltaTime);
-      isMoving = true;
-    }
-    if (keys.d) {
-      player.moveRight(deltaTime);
-      isMoving = true;
-    }
-    if (keys.q) {
-      player.moveUpLeft(deltaTime);
-      isMoving = true;
-    }
-    if (keys.e) {
-      player.moveUpRight(deltaTime);
-      isMoving = true;
-    }
-    if (keys.z) {
-      player.moveDownLeft(deltaTime);
-      isMoving = true;
-    }
-    if (keys.c) {
-      player.moveDownRight(deltaTime);
-      isMoving = true;
-    }
-
-    if (isMoving && !checkPositionValidity(player.position.x, player.position.y)) {
-      player.position.x = oldX;
-      player.position.y = oldY;
-      player.mesh.position.copy(player.position);
-      isMoving = false;
+    if (moveX !== 0 || moveY !== 0) {
+      const length = Math.sqrt(moveX * moveX + moveY * moveY);
+      moveX /= length;
+      moveY /= length;
+      
+      const moveAmount = player.moveSpeed * deltaTime;
+      const targetX = player.position.x + moveX * moveAmount;
+      const targetY = player.position.y + moveY * moveAmount;
+      
+      const result = findSlidingPosition(player.position.x, player.position.y, targetX, targetY);
+      
+      const movedDist = Math.sqrt(Math.pow(result.x - player.position.x, 2) + Math.pow(result.y - player.position.y, 2));
+      if (movedDist >= 1) {
+        player.position.x = result.x;
+        player.position.y = result.y;
+        player.mesh.position.copy(player.position);
+        isMoving = true;
+      }
+      
+      if (moveX < 0) {
+        player.setDirectionLeft();
+      } else if (moveX > 0) {
+        player.setDirectionRight();
+      }
     }
   }
 
   player.setMoving(isMoving);
+}
+
+function checkCombatRange() {
+  const playerPos = player.getPosition();
+  
+  for (const monster of monsters) {
+    if (!monster.isAlive) continue;
+    
+    const monsterPos = monster.getPosition();
+    const distance = Math.sqrt(
+      Math.pow(playerPos.x - monsterPos.x, 2) +
+      Math.pow(playerPos.y - monsterPos.y, 2)
+    );
+    
+    if (distance <= COMBAT_RANGE) {
+      return monster;
+    }
+  }
+  
+  return null;
+}
+
+function handleCombat(currentTime) {
+  const nearbyMonster = checkCombatRange();
+  
+  if (nearbyMonster && player.isAlive && nearbyMonster.isAlive) {
+    isInCombat.value = true;
+    player.setInCombat(true);
+    nearbyMonster.setInCombat(true);
+    
+    if (player.position.x < nearbyMonster.position.x) {
+      player.setDirectionRight();
+    } else {
+      player.setDirectionLeft();
+    }
+    
+    const playerAttack = player.attackTarget(nearbyMonster, currentTime);
+    if (playerAttack.hit) {
+      const critText = playerAttack.isCritical ? '暴击！' : '';
+      addCombatLog(`${characterName.value} 攻击 ${nearbyMonster.name}，造成 ${playerAttack.damage} 点伤害${critText}`, playerAttack.isCritical);
+      
+      if (!nearbyMonster.isAlive) {
+        addCombatLog(`🎉 ${nearbyMonster.name} 被击败了！`, false);
+        scene.remove(nearbyMonster.getMesh());
+        monsters = monsters.filter(m => m !== nearbyMonster);
+        
+        if (monsters.length === 0) {
+          gameOver.value = true;
+          gameOverWin.value = true;
+        }
+        
+        isInCombat.value = false;
+        player.setInCombat(false);
+      }
+    }
+    
+    const monsterAttack = nearbyMonster.attackTarget(player, currentTime);
+    if (monsterAttack.hit && nearbyMonster.isAlive) {
+      const critText = monsterAttack.isCritical ? '暴击！' : '';
+      addCombatLog(`${nearbyMonster.name} 攻击 ${characterName.value}，造成 ${monsterAttack.damage} 点伤害${critText}`, monsterAttack.isCritical);
+      
+      if (!player.isAlive) {
+        addCombatLog(`💀 ${characterName.value} 被击败了！`, false);
+        gameOver.value = true;
+        gameOverWin.value = false;
+      }
+    }
+  } else {
+    isInCombat.value = false;
+    player.setInCombat(false);
+    monsters.forEach(m => m.setInCombat(false));
+  }
 }
 
 function animate(currentTime) {
@@ -461,9 +850,19 @@ function animate(currentTime) {
   const deltaTime = (currentTime - lastTime) / 1000;
   lastTime = currentTime;
 
-  if (deltaTime > 0 && deltaTime < 1) {
-    updateMovement(deltaTime, currentTime);
-    player.updateAnimation(currentTime);
+  if (!gameOver.value) {
+    if (deltaTime > 0 && deltaTime < 1) {
+      updateMovement(deltaTime, currentTime);
+      player.updateAnimation(currentTime);
+      monsters.forEach(monster => {
+        monster.updateAnimation(currentTime);
+      });
+    }
+    
+    handleCombat(currentTime);
+    
+    updateHealthBar(player);
+    monsters.forEach(updateHealthBar);
   }
 
   const pos = player.getPosition();
@@ -477,6 +876,23 @@ function animate(currentTime) {
   facingDirection.value = player.facingRight ? 'Right' : 'Left';
 
   renderer.render(scene, camera);
+}
+
+function restartGame() {
+  gameOver.value = false;
+  gameOverWin.value = false;
+  combatLog.value = [];
+  
+  player.hp = player.maxHp;
+  player.isAlive = true;
+  player.setPosition(0, 0, 0);
+  
+  monsters.forEach(monster => {
+    scene.remove(monster.getMesh());
+  });
+  monsters = [];
+  
+  spawnMonster(1);
 }
 
 async function syncPositionToServer() {
@@ -546,6 +962,12 @@ onUnmounted(() => {
   font-size: 12px;
 }
 
+.controls-info .combat-tip {
+  color: #ff6b6b;
+  font-weight: bold;
+  margin-top: 8px;
+}
+
 .status-bar {
   position: absolute;
   bottom: 10px;
@@ -566,6 +988,22 @@ onUnmounted(() => {
 
 .status-bar span {
   font-size: 14px;
+}
+
+.combat-status {
+  padding: 4px 10px;
+  border-radius: 4px;
+  background: rgba(50, 50, 50, 0.8);
+}
+
+.combat-status.in-combat {
+  background: rgba(255, 107, 107, 0.8);
+  animation: pulse 1s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
 }
 
 .toggle-switch {
@@ -645,5 +1083,94 @@ onUnmounted(() => {
 .background-selector select option {
   background: #333;
   color: white;
+}
+
+.combat-log {
+  position: absolute;
+  top: 120px;
+  right: 10px;
+  background: rgba(0, 0, 0, 0.8);
+  border-radius: 8px;
+  padding: 10px;
+  width: 280px;
+  max-height: 200px;
+  overflow-y: auto;
+  z-index: 100;
+}
+
+.combat-log-title {
+  color: #ff6b6b;
+  font-weight: bold;
+  font-size: 14px;
+  margin-bottom: 8px;
+  padding-bottom: 5px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.combat-log-content {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.log-entry {
+  color: #ddd;
+  font-size: 12px;
+  padding: 4px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.log-entry.critical {
+  color: #ffd700;
+  background: rgba(255, 215, 0, 0.1);
+}
+
+.game-over {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.85);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
+
+.game-over-content {
+  text-align: center;
+  color: white;
+  padding: 40px;
+  background: rgba(30, 30, 30, 0.95);
+  border-radius: 16px;
+  border: 2px solid rgba(255, 107, 107, 0.5);
+}
+
+.game-over-content h2 {
+  font-size: 36px;
+  margin-bottom: 16px;
+}
+
+.game-over-content p {
+  font-size: 18px;
+  margin-bottom: 24px;
+}
+
+.game-over-content button {
+  padding: 12px 32px;
+  font-size: 18px;
+  background: linear-gradient(135deg, #ff6b6b, #ff8e53);
+  border: none;
+  border-radius: 8px;
+  color: white;
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.game-over-content button:hover {
+  transform: scale(1.05);
+  box-shadow: 0 0 20px rgba(255, 107, 107, 0.5);
 }
 </style>
