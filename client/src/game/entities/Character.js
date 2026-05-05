@@ -20,10 +20,9 @@ export class Character {
     );
 
     this.moveSpeed = options.moveSpeed || 200;
-    this.rotationSpeed = options.rotationSpeed || 4;
 
     this.direction = new THREE.Vector3(0, 1, 0);
-    this.facingAngle = 0;
+    this.facingRight = true;
 
     this.movingTextures = [];
     this.idleTextures = [];
@@ -113,50 +112,75 @@ export class Character {
     this.currentFrame = 0;
   }
 
-  rotateLeft() {
-    this.facingAngle += Math.PI / 4;
-    this.updateRotation();
+  setDirectionRight() {
+    if (!this.facingRight) {
+      this.facingRight = true;
+      this.mesh.scale.x = 1;
+    }
   }
 
-  rotateRight() {
-    this.facingAngle -= Math.PI / 4;
-    this.updateRotation();
-  }
-
-  updateRotation() {
-    this.direction.x = -Math.sin(this.facingAngle);
-    this.direction.y = Math.cos(this.facingAngle);
-    this.direction.normalize();
-    this.mesh.rotation.z = this.facingAngle;
+  setDirectionLeft() {
+    if (this.facingRight) {
+      this.facingRight = false;
+      this.mesh.scale.x = -1;
+    }
   }
 
   moveForward(deltaTime) {
     const moveAmount = this.moveSpeed * deltaTime;
-    this.position.x += this.direction.x * moveAmount;
-    this.position.y += this.direction.y * moveAmount;
+    this.position.y += moveAmount;
     this.mesh.position.copy(this.position);
   }
 
   moveBackward(deltaTime) {
     const moveAmount = this.moveSpeed * deltaTime;
-    this.position.x -= this.direction.x * moveAmount;
-    this.position.y -= this.direction.y * moveAmount;
+    this.position.y -= moveAmount;
     this.mesh.position.copy(this.position);
   }
 
-  strafeLeft(deltaTime) {
+  moveLeft(deltaTime) {
     const moveAmount = this.moveSpeed * deltaTime;
-    const leftDir = new THREE.Vector3(-this.direction.y, this.direction.x, 0);
-    this.position.x += leftDir.x * moveAmount;
-    this.position.y += leftDir.y * moveAmount;
+    this.position.x -= moveAmount;
+    this.setDirectionLeft();
     this.mesh.position.copy(this.position);
   }
 
-  strafeRight(deltaTime) {
+  moveRight(deltaTime) {
     const moveAmount = this.moveSpeed * deltaTime;
-    const rightDir = new THREE.Vector3(this.direction.y, -this.direction.x, 0);
-    this.position.x += rightDir.x * moveAmount;
-    this.position.y += rightDir.y * moveAmount;
+    this.position.x += moveAmount;
+    this.setDirectionRight();
+    this.mesh.position.copy(this.position);
+  }
+
+  moveUpLeft(deltaTime) {
+    const moveAmount = this.moveSpeed * deltaTime * 0.707;
+    this.position.x -= moveAmount;
+    this.position.y += moveAmount;
+    this.setDirectionLeft();
+    this.mesh.position.copy(this.position);
+  }
+
+  moveUpRight(deltaTime) {
+    const moveAmount = this.moveSpeed * deltaTime * 0.707;
+    this.position.x += moveAmount;
+    this.position.y += moveAmount;
+    this.setDirectionRight();
+    this.mesh.position.copy(this.position);
+  }
+
+  moveDownLeft(deltaTime) {
+    const moveAmount = this.moveSpeed * deltaTime * 0.707;
+    this.position.x -= moveAmount;
+    this.position.y -= moveAmount;
+    this.setDirectionLeft();
+    this.mesh.position.copy(this.position);
+  }
+
+  moveDownRight(deltaTime) {
+    const moveAmount = this.moveSpeed * deltaTime * 0.707;
+    this.position.x += moveAmount;
+    this.position.y -= moveAmount;
+    this.setDirectionRight();
     this.mesh.position.copy(this.position);
   }
 
@@ -184,6 +208,10 @@ export class Character {
       x: this.position.x,
       y: this.position.y
     };
+  }
+
+  getFacingRight() {
+    return this.facingRight;
   }
 
   setPosition(x, y, z = 0) {
