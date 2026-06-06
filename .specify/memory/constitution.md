@@ -210,4 +210,5 @@ Sprint 49 单 sprint 51 task 膨胀是这条规则缺失的直接后果——5 �
 # 架构要求
 - 前台是vue3+Element Plus+three.js，后台使用node.js
 - 数据库采用sqlite，但不要用编译版本，直接用js的版本即可
-- 注意你的开发调试环境是windows，不要用bash脚本，尽量生成powershell脚本，生成的脚本要注意语法
+- 注意你的开发调试环境是windows，不要用bash脚本，尽量生成powershell脚本，注意powershell脚本用来隔开不同命令用的是分号而不是&&
+- 服务目录为server，jest等应该在这个下面运行
