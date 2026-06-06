@@ -1,0 +1,32 @@
+---
+description: 引用并遵循项目 Constitution 治理文件
+alwaysApply: true
+---
+
+# 项目 Constitution
+
+所有实现、评审、规划与重构决策，必须与项目 Constitution 保持一致。
+
+## 必读引用
+
+开始任务前，或在做架构/依赖/测试/模块边界相关决策前，必须引用并阅读：
+
+@.specify/memory/constitution.md
+
+## 执行要求
+
+- 将 Constitution 视为最高级技术治理文件，优先级高于临时约定与个人偏好
+- 涉及新依赖、新架构模式、跨模块改动、测试策略、UI 验证方式时，先对照 Constitution 再动手
+- 若计划与 Constitution 冲突，先说明冲突点并请求澄清或修订 Constitution，不得静默违反
+- PR / 变更说明中，如有适用原则，应简要注明符合哪条原则（或为何需要例外）
+
+## 重点关注（摘要）
+
+Constitution 全文以引用文件为准；以下为高频检查点：
+
+- **测试纪律**：核心业务路径需自动化测试；数据完整性/权限等逻辑需充分覆盖
+- **简单优先 (YAGNI)**：不引入当前阶段不需要的依赖；新依赖须在 plan 中记录理由
+- **模块边界**：跨 spec 实体消费须显式申报；不得违反 scope 边界
+- **多模块规约**：参考其他模块的 data-models、contracts 时须直接使用；修改须在对端模块任务中增补，不可在本模块擅自改协议
+- **技术栈**：前台 Vue 3 + Element Plus + three.js；后台 Node.js；数据库 SQLite（JS 版，非编译版）
+- **E2E**：本项目前台暂不用 Playwright，E2E 采用人工测试

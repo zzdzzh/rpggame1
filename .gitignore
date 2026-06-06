@@ -38,6 +38,9 @@ lerna-debug.log*
 *.temp
 .cache/
 
+# Database files
+*.db
+
 # Vite specific
 .vite/
 *.timestamp-*.mjs
