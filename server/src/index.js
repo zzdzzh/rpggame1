@@ -8,6 +8,7 @@ const characterRoutes = require('./routes/characterRoutes');
 const backgroundRoutes = require('./routes/backgroundRoutes');
 const itemRoutes = require('./routes/itemRoutes');
 const questRoutes = require('./routes/questRoutes');
+const QuestProgressService = require('./services/QuestProgressService');
 const characterService = require('./services/CharacterService');
 const Character = require('./models/Character');
 
@@ -53,6 +54,8 @@ io.on('connection', (socket) => {
 characterService.startPositionBroadcast((positions) => {
   io.emit('positionsUpdate', positions);
 });
+
+QuestProgressService.setIo(io);
 
 const PORT = process.env.PORT || 3000;
 
