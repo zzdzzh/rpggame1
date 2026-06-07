@@ -66,6 +66,22 @@ const Character = sequelize.define('Character', {
   gold: {
     type: DataTypes.INTEGER,
     defaultValue: 0
+  },
+  equip_weapon_id: {
+    type: DataTypes.INTEGER,
+    allowNull: true
+  },
+  equip_helmet_id: {
+    type: DataTypes.INTEGER,
+    allowNull: true
+  },
+  equip_armor_id: {
+    type: DataTypes.INTEGER,
+    allowNull: true
+  },
+  equip_accessory_id: {
+    type: DataTypes.INTEGER,
+    allowNull: true
   }
 }, {
   tableName: 'characters',
