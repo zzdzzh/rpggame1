@@ -68,11 +68,8 @@ server/
 │   ├── config/
 │   │   └── sequelize.js          # 已有，复用
 │   ├── models/
-│   │   ├── Quest.js              # 任务定义
-│   │   ├── PlayerQuest.js        # 玩家任务实例
-│   │   ├── QuestObjective.js     # 任务目标配置
-│   │   ├── QuestReward.js        # 任务奖励配置
-│   │   └── QuestTrigger.js       # 任务触发条件配置
+│   │   ├── Quest.js              # 任务定义（目标/奖励/触发条件以 JSON 字段存储）
+│   │   └── PlayerQuest.js        # 玩家任务实例
 │   ├── controllers/
 │   │   ├── QuestController.js    # 玩家侧接口
 │   │   └── QuestAdminController.js # 管理侧接口
@@ -86,10 +83,7 @@ server/
 │   │   └── QuestAdminService.js  # 管理 CRUD
 │   └── migrations/
 │       ├── YYYYMMDDHHMMSS-create-quest.js
-│       ├── YYYYMMDDHHMMSS-create-player-quest.js
-│       ├── YYYYMMDDHHMMSS-create-quest-objective.js
-│       ├── YYYYMMDDHHMMSS-create-quest-reward.js
-│       └── YYYYMMDDHHMMSS-create-quest-trigger.js
+│       └── YYYYMMDDHHMMSS-create-player-quest.js
 ├── tests/
 │   ├── integration/
 │   │   └── quest.integration.test.js
@@ -101,6 +95,8 @@ server/
 ```
 
 **Structure Decision**: 采用现有单项目结构（Option 1），与 002 道具系统保持一致。新增模型、控制器、路由、服务均放入现有 `server/src/` 对应目录。测试目录沿用现有 `server/tests/` 结构。
+
+**JSON Flattening Decision**: 任务目标、奖励、触发条件均以 JSON 字段存储在 `Quest` 表中（`objectives_json`、`rewards_json`、`trigger_conditions_json`），不拆分为独立关联表。详见 `research.md` Decision 3。
 
 ## Complexity Tracking
 
