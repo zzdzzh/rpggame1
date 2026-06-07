@@ -269,7 +269,7 @@ async function useConsumable(characterId, playerItemId, quantity) {
 
   try {
     const row = await PlayerItem.findByPk(playerItemId, {
-      include: [{ model: ItemDefinition }],
+      include: [{ model: ItemDefinition, as: 'ItemDefinition' }],
       transaction
     });
 

@@ -9,6 +9,7 @@
 ## Active Plan
 
 - [001-game-quest-system plan](specs/001-game-quest-system/plan.md) — 游戏任务系统实现方案
+- [003-item-config-frontend plan](specs/003-item-config-frontend/plan.md) — 道具配置管理前台实现方案
 
 <!-- SPECKIT END -->
 ## Shell and script conventions
