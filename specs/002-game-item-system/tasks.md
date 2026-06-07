@@ -20,8 +20,8 @@
 
 **Purpose**: 数据库迁移与项目依赖调整
 
-- [ ] T001 更新 `server/package.json`：移除 `mysql2`，添加 `sqlite3` 依赖
-- [ ] T002 更新 `server/src/config/database.js`：改为 SQLite 单文件配置；创建 `server/data/` 目录并在 `.gitignore` 中排除 `*.db`
+- [x] T001 更新 `server/package.json`：移除 `mysql2`，添加 `sqlite3` 依赖
+- [x] T002 更新 `server/src/config/database.js`：改为 SQLite 单文件配置；创建 `server/data/` 目录并在 `.gitignore` 中排除 `*.db`
 
 ---
 
@@ -31,12 +31,12 @@
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete
 
-- [ ] T003 [P] 修改 `server/src/models/Character.js`：增加装备槽位字段（`equip_weapon_id`, `equip_helmet_id`, `equip_armor_id`, `equip_accessory_id`）
-- [ ] T004 [P] 创建 `server/src/models/ItemDefinition.js`：道具定义模型（含 JSON 字段 `consumable_effect`、`equipment_stats`）
-- [ ] T005 [P] 创建 `server/src/models/PlayerItem.js`：玩家背包模型
-- [ ] T006 创建 `server/src/models/index.js`：统一导出所有模型并定义 Sequelize 关系（Character↔PlayerItem, ItemDefinition↔PlayerItem）
-- [ ] T007 创建 Sequelize 迁移文件：Character 扩展字段 + ItemDefinition 表 + PlayerItem 表
-- [ ] T008 运行迁移生成 SQLite 表结构，验证 `server/data/game.db` 正常创建
+- [x] T003 [P] 修改 `server/src/models/Character.js`：增加装备槽位字段（`equip_weapon_id`, `equip_helmet_id`, `equip_armor_id`, `equip_accessory_id`）
+- [x] T004 [P] 创建 `server/src/models/ItemDefinition.js`：道具定义模型（含 JSON 字段 `consumable_effect`、`equipment_stats`）
+- [x] T005 [P] 创建 `server/src/models/PlayerItem.js`：玩家背包模型
+- [x] T006 创建 `server/src/models/index.js`：统一导出所有模型并定义 Sequelize 关系（Character↔PlayerItem, ItemDefinition↔PlayerItem）
+- [x] T007 创建 Sequelize 迁移文件：Character 扩展字段 + ItemDefinition 表 + PlayerItem 表
+- [x] T008 运行迁移生成 SQLite 表结构，验证 `server/data/game.db` 正常创建
 
 **Checkpoint**: Foundation ready - user story implementation can now begin in parallel
 
@@ -52,15 +52,15 @@
 
 > **NOTE: Write these tests FIRST, ensure they FAIL before implementation**
 
-- [ ] T009 [P] [US1] 编写 `server/src/services/InventoryService.test.js`：覆盖 addItems 堆叠逻辑、满格拒绝、discardItem 部分丢弃与绑定保护
-- [ ] T010 [P] [US1] 编写 `server/tests/integration/inventory.integration.test.js`：覆盖 GET /api/inventory 筛选排序与容量统计
+- [x] T009 [P] [US1] 编写 `server/src/services/InventoryService.test.js`：覆盖 addItems 堆叠逻辑、满格拒绝、discardItem 部分丢弃与绑定保护
+- [x] T010 [P] [US1] 编写 `server/tests/integration/inventory.integration.test.js`：覆盖 GET /api/inventory 筛选排序与容量统计
 
 ### Implementation for User Story 1
 
-- [ ] T011 [US1] 实现 `server/src/services/InventoryService.js` 的 `addItems(characterId, items)`：优先堆叠到已有格子，无法堆叠占新格，背包满则整单回滚
-- [ ] T012 [US1] 实现 `server/src/services/InventoryService.js` 的 `discardItem(characterId, playerItemId, quantity)`：支持部分丢弃，已绑定道具拒绝丢弃，数量为0时删除记录
-- [ ] T013 [US1] 实现 `server/src/services/InventoryService.js` 的 `getInventory(characterId, filters)`：按类型筛选、支持排序、返回 `slots_used/slots_total`
-- [ ] T014 [US1] 实现 `server/src/controllers/ItemController.js` 背包相关接口（查询、丢弃）并在 `server/src/routes/itemRoutes.js` / `server/src/index.js` 注册路由
+- [x] T011 [US1] 实现 `server/src/services/InventoryService.js` 的 `addItems(characterId, items)`：优先堆叠到已有格子，无法堆叠占新格，背包满则整单回滚
+- [x] T012 [US1] 实现 `server/src/services/InventoryService.js` 的 `discardItem(characterId, playerItemId, quantity)`：支持部分丢弃，已绑定道具拒绝丢弃，数量为0时删除记录
+- [x] T013 [US1] 实现 `server/src/services/InventoryService.js` 的 `getInventory(characterId, filters)`：按类型筛选、支持排序、返回 `slots_used/slots_total`
+- [x] T014 [US1] 实现 `server/src/controllers/ItemController.js` 背包相关接口（查询、丢弃）并在 `server/src/routes/itemRoutes.js` / `server/src/index.js` 注册路由
 
 **Checkpoint**: At this point, User Story 1 should be fully functional and testable independently
 
@@ -76,16 +76,16 @@
 
 > **NOTE: Write these tests FIRST, ensure they FAIL before implementation**
 
-- [ ] T015 [P] [US2] 编写 `server/src/services/InventoryService.test.js` 补充测试：覆盖 `useConsumable` 效果计算、hp/mp 上限约束、数量扣除
-- [ ] T016 [P] [US2] 编写 `server/src/services/InventoryService.test.js` 补充测试：覆盖 `equipItem` 部位替换、`unequipItem` 回背包检查、属性重算
+- [x] T015 [P] [US2] 编写 `server/src/services/InventoryService.test.js` 补充测试：覆盖 `useConsumable` 效果计算、hp/mp 上限约束、数量扣除
+- [x] T016 [P] [US2] 编写 `server/src/services/InventoryService.test.js` 补充测试：覆盖 `equipItem` 部位替换、`unequipItem` 回背包检查、属性重算
 
 ### Implementation for User Story 2
 
-- [ ] T017 [US2] 实现 `server/src/services/InventoryService.js` 的 `useConsumable(characterId, playerItemId, quantity)`：解析 `consumable_effect`，计算实际效果（不超上限），扣除数量，通过 Socket.io 推送角色状态变更
-- [ ] T018 [US2] 实现 `server/src/services/InventoryService.js` 的 `equipItem(characterId, playerItemId)`：校验装备类型与部位，自动替换旧装备（旧装备回背包），触发角色属性重算
-- [ ] T019 [US2] 实现 `server/src/services/InventoryService.js` 的 `unequipItem(characterId, slot)`：校验部位非空，检查背包容量，将装备移回背包，触发角色属性重算
-- [ ] T020 [US2] 实现 `server/src/controllers/ItemController.js` 使用/穿戴/卸下接口并在 `server/src/routes/itemRoutes.js` / `server/src/index.js` 补充注册
-- [ ] T021 [US2] 在 `server/src/index.js` 中集成 Socket.io `characterUpdate` 事件推送：当角色属性因消耗品或装备变更时，向对应客户端广播最新 `Character` 数据
+- [x] T017 [US2] 实现 `server/src/services/InventoryService.js` 的 `useConsumable(characterId, playerItemId, quantity)`：解析 `consumable_effect`，计算实际效果（不超上限），扣除数量，通过 Socket.io 推送角色状态变更
+- [x] T018 [US2] 实现 `server/src/services/InventoryService.js` 的 `equipItem(characterId, playerItemId)`：校验装备类型与部位，自动替换旧装备（旧装备回背包），触发角色属性重算
+- [x] T019 [US2] 实现 `server/src/services/InventoryService.js` 的 `unequipItem(characterId, slot)`：校验部位非空，检查背包容量，将装备移回背包，触发角色属性重算
+- [x] T020 [US2] 实现 `server/src/controllers/ItemController.js` 使用/穿戴/卸下接口并在 `server/src/routes/itemRoutes.js` / `server/src/index.js` 补充注册
+- [x] T021 [US2] 在 `server/src/index.js` 中集成 Socket.io `characterUpdate` 事件推送：当角色属性因消耗品或装备变更时，向对应客户端广播最新 `Character` 数据
 
 **Checkpoint**: At this point, User Stories 1 AND 2 should both work independently
 
@@ -101,14 +101,14 @@
 
 > **NOTE: Write these tests FIRST, ensure they FAIL before implementation**
 
-- [ ] T022 [P] [US3] 编写 `server/src/services/ItemService.test.js`：覆盖 CRUD、参数校验、删除时玩家持有保护
-- [ ] T023 [P] [US3] 编写 `server/tests/integration/item-admin.integration.test.js`：覆盖 POST/PUT/DELETE /api/admin/items 端到端
+- [x] T022 [P] [US3] 编写 `server/src/services/ItemService.test.js`：覆盖 CRUD、参数校验、删除时玩家持有保护
+- [x] T023 [P] [US3] 编写 `server/tests/integration/item-admin.integration.test.js`：覆盖 POST/PUT/DELETE /api/admin/items 端到端
 
 ### Implementation for User Story 3
 
-- [ ] T024 [US3] 实现 `server/src/services/ItemService.js` 完整 CRUD：创建/查询（支持分页筛选）/更新/删除；删除前校验无玩家持有；更新时校验 JSON 结构
-- [ ] T025 [US3] 实现管理员修改 `equipment_stats` 后的全服重算：在 `ItemService.update()` 中，若 `equipment_stats` 变更，遍历所有 `equip_*_id` 引用该 `ItemDefinition` 的 `Character` 记录，触发属性重算
-- [ ] T026 [US3] 实现 `server/src/controllers/ItemController.js` 管理接口（`GET/POST/PUT/DELETE /api/admin/items`）并在 `server/src/routes/itemRoutes.js` / `server/src/index.js` 补充注册
+- [x] T024 [US3] 实现 `server/src/services/ItemService.js` 完整 CRUD：创建/查询（支持分页筛选）/更新/删除；删除前校验无玩家持有；更新时校验 JSON 结构
+- [x] T025 [US3] 实现管理员修改 `equipment_stats` 后的全服重算：在 `ItemService.update()` 中，若 `equipment_stats` 变更，遍历所有 `equip_*_id` 引用该 `ItemDefinition` 的 `Character` 记录，触发属性重算
+- [x] T026 [US3] 实现 `server/src/controllers/ItemController.js` 管理接口（`GET/POST/PUT/DELETE /api/admin/items`）并在 `server/src/routes/itemRoutes.js` / `server/src/index.js` 补充注册
 
 **Checkpoint**: All user stories should now be independently functional
 
@@ -118,8 +118,8 @@
 
 **Purpose**: 跨用户故事的收尾工作
 
-- [ ] T027 [P] 运行全部 Jest 测试套件（`npm test`），确保核心逻辑单元测试与集成测试全部通过
-- [ ] T028 人工 E2E 验收：按 `quickstart.md` 执行 Smoke Test，覆盖背包查询、道具获得、使用药水、穿戴装备、卸下装备、管理员创建道具、删除保护
+- [x] T027 [P] 运行全部 Jest 测试套件（`npm test`），确保核心逻辑单元测试与集成测试全部通过
+- [x] T028 人工 E2E 验收：按 `quickstart.md` 执行 Smoke Test，覆盖背包查询、道具获得、使用药水、穿戴装备、卸下装备、管理员创建道具、删除保护
 
 ---
 

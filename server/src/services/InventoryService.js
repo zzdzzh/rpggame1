@@ -2,6 +2,13 @@ const { Character, ItemDefinition, PlayerItem, sequelize } = require('../models'
 
 const SLOTS_TOTAL = 200;
 
+const EQUIP_SLOT_FIELDS = {
+  weapon: 'equip_weapon_id',
+  helmet: 'equip_helmet_id',
+  armor: 'equip_armor_id',
+  accessory: 'equip_accessory_id'
+};
+
 async function addItems(characterId, items) {
   if (!Array.isArray(items) || items.length === 0) {
     throw new Error('items must be a non-empty array');
@@ -248,9 +255,293 @@ async function getInventory(characterId, filters = {}) {
   };
 }
 
+async function useConsumable(characterId, playerItemId, quantity) {
+  if (!playerItemId || quantity <= 0) {
+    throw new Error('Invalid use parameters');
+  }
+
+  const transaction = await sequelize.transaction();
+
+  try {
+    const row = await PlayerItem.findByPk(playerItemId, {
+      include: [{ model: ItemDefinition }],
+      transaction
+    });
+
+    if (!row) {
+      throw new Error('PlayerItem not found');
+    }
+
+    if (row.character_id !== characterId) {
+      throw new Error('PlayerItem does not belong to character');
+    }
+
+    if (row.ItemDefinition.item_type !== 'consumable') {
+      throw new Error('Item is not a consumable');
+    }
+
+    if (quantity > row.quantity) {
+      throw new Error('Use quantity exceeds current quantity');
+    }
+
+    const effect = row.ItemDefinition.consumable_effect;
+    if (!effect || !effect.type || !effect.target || effect.value === undefined) {
+      throw new Error('Invalid consumable effect configuration');
+    }
+
+    const character = await Character.findByPk(characterId, { transaction });
+    if (!character) {
+      throw new Error('Character not found');
+    }
+
+    let actualValue = 0;
+    let reason = null;
+
+    if (effect.type === 'restore') {
+      if (effect.target === 'hp') {
+        const before = character.hp;
+        const after = Math.min(character.hp + effect.value, character.max_hp);
+        actualValue = after - before;
+        if (actualValue < effect.value) {
+          reason = 'capped_by_max_hp';
+        }
+        character.hp = after;
+      } else if (effect.target === 'mp') {
+        const before = character.mp;
+        const after = Math.min(character.mp + effect.value, character.max_mp);
+        actualValue = after - before;
+        if (actualValue < effect.value) {
+          reason = 'capped_by_max_mp';
+        }
+        character.mp = after;
+      } else {
+        throw new Error(`Unsupported restore target: ${effect.target}`);
+      }
+    } else {
+      throw new Error(`Unsupported consumable effect type: ${effect.type}`);
+    }
+
+    await character.save({ transaction });
+
+    const remaining = row.quantity - quantity;
+    if (remaining === 0) {
+      await row.destroy({ transaction });
+    } else {
+      row.quantity = remaining;
+      await row.save({ transaction });
+    }
+
+    await transaction.commit();
+
+    return {
+      success: true,
+      effect: {
+        type: effect.type,
+        target: effect.target,
+        value: effect.value,
+        actual_value: actualValue,
+        reason
+      },
+      character: {
+        character_id: character.character_id,
+        hp: character.hp,
+        max_hp: character.max_hp,
+        mp: character.mp,
+        max_mp: character.max_mp
+      },
+      remaining_quantity: remaining,
+      player_item_id: playerItemId
+    };
+  } catch (error) {
+    await transaction.rollback();
+    throw error;
+  }
+}
+
+async function equipItem(characterId, playerItemId) {
+  const transaction = await sequelize.transaction();
+
+  try {
+    const row = await PlayerItem.findByPk(playerItemId, {
+      include: [{ model: ItemDefinition }],
+      transaction
+    });
+
+    if (!row) {
+      throw new Error('PlayerItem not found');
+    }
+
+    if (row.character_id !== characterId) {
+      throw new Error('PlayerItem does not belong to character');
+    }
+
+    if (row.ItemDefinition.item_type !== 'equipment') {
+      throw new Error('Item is not equipment');
+    }
+
+    const slot = row.ItemDefinition.equip_slot;
+    if (!slot || !EQUIP_SLOT_FIELDS[slot]) {
+      throw new Error('Invalid equipment slot');
+    }
+
+    const character = await Character.findByPk(characterId, { transaction });
+    if (!character) {
+      throw new Error('Character not found');
+    }
+
+    const slotField = EQUIP_SLOT_FIELDS[slot];
+    const previousItemId = character[slotField];
+    let previousItem = null;
+
+    if (previousItemId) {
+      const prevRow = await PlayerItem.findByPk(previousItemId, {
+        include: [{ model: ItemDefinition }],
+        transaction
+      });
+      if (prevRow) {
+        previousItem = {
+          player_item_id: prevRow.player_item_id,
+          name: prevRow.ItemDefinition.name
+        };
+        const stats = prevRow.ItemDefinition.equipment_stats || {};
+        character.attack = Math.max(0, character.attack - (stats.attack || 0));
+        character.defense = Math.max(0, character.defense - (stats.defense || 0));
+        character.max_hp = Math.max(1, character.max_hp - (stats.max_hp || 0));
+        character.max_mp = Math.max(0, character.max_mp - (stats.max_mp || 0));
+        character.hp = Math.min(character.hp, character.max_hp);
+        character.mp = Math.min(character.mp, character.max_mp);
+      }
+    }
+
+    const newStats = row.ItemDefinition.equipment_stats || {};
+    character.attack += (newStats.attack || 0);
+    character.defense += (newStats.defense || 0);
+    character.max_hp += (newStats.max_hp || 0);
+    character.max_mp += (newStats.max_mp || 0);
+    character.hp = Math.min(character.hp, character.max_hp);
+    character.mp = Math.min(character.mp, character.max_mp);
+
+    character[slotField] = playerItemId;
+    await character.save({ transaction });
+
+    await transaction.commit();
+
+    return {
+      success: true,
+      equipped_slot: slot,
+      previous_item: previousItem,
+      character: {
+        character_id: character.character_id,
+        attack: character.attack,
+        defense: character.defense,
+        max_hp: character.max_hp,
+        max_mp: character.max_mp,
+        hp: character.hp,
+        mp: character.mp
+      }
+    };
+  } catch (error) {
+    await transaction.rollback();
+    throw error;
+  }
+}
+
+async function unequipItem(characterId, slot) {
+  if (!slot || !EQUIP_SLOT_FIELDS[slot]) {
+    throw new Error('Invalid slot');
+  }
+
+  const transaction = await sequelize.transaction();
+
+  try {
+    const character = await Character.findByPk(characterId, { transaction });
+    if (!character) {
+      throw new Error('Character not found');
+    }
+
+    const slotField = EQUIP_SLOT_FIELDS[slot];
+    const playerItemId = character[slotField];
+
+    if (!playerItemId) {
+      throw new Error('No item equipped in this slot');
+    }
+
+    const row = await PlayerItem.findByPk(playerItemId, {
+      include: [{ model: ItemDefinition }],
+      transaction
+    });
+
+    if (!row) {
+      throw new Error('Equipped item not found in inventory');
+    }
+
+    const stats = row.ItemDefinition.equipment_stats || {};
+    character.attack = Math.max(0, character.attack - (stats.attack || 0));
+    character.defense = Math.max(0, character.defense - (stats.defense || 0));
+    character.max_hp = Math.max(1, character.max_hp - (stats.max_hp || 0));
+    character.max_mp = Math.max(0, character.max_mp - (stats.max_mp || 0));
+    character.hp = Math.min(character.hp, character.max_hp);
+    character.mp = Math.min(character.mp, character.max_mp);
+
+    character[slotField] = null;
+    await character.save({ transaction });
+
+    await transaction.commit();
+
+    return {
+      success: true,
+      unequipped_item: {
+        player_item_id: row.player_item_id,
+        name: row.ItemDefinition.name
+      },
+      character: {
+        character_id: character.character_id,
+        attack: character.attack,
+        defense: character.defense,
+        max_hp: character.max_hp,
+        max_mp: character.max_mp,
+        hp: character.hp,
+        mp: character.mp
+      }
+    };
+  } catch (error) {
+    await transaction.rollback();
+    throw error;
+  }
+}
+
+async function recalculateCharacterStats(character, transaction) {
+  const slots = ['equip_weapon_id', 'equip_helmet_id', 'equip_armor_id', 'equip_accessory_id'];
+  let bonus = { attack: 0, defense: 0, max_hp: 0, max_mp: 0 };
+
+  for (const slotField of slots) {
+    const itemId = character[slotField];
+    if (!itemId) continue;
+
+    const row = await PlayerItem.findByPk(itemId, {
+      include: [{ model: ItemDefinition }],
+      transaction
+    });
+
+    if (row && row.ItemDefinition.equipment_stats) {
+      const stats = row.ItemDefinition.equipment_stats;
+      bonus.attack += stats.attack || 0;
+      bonus.defense += stats.defense || 0;
+      bonus.max_hp += stats.max_hp || 0;
+      bonus.max_mp += stats.max_mp || 0;
+    }
+  }
+
+  return bonus;
+}
+
 module.exports = {
   SLOTS_TOTAL,
   addItems,
   discardItem,
-  getInventory
+  getInventory,
+  useConsumable,
+  equipItem,
+  unequipItem,
+  recalculateCharacterStats
 };
