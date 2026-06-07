@@ -211,4 +211,8 @@ Sprint 49 单 sprint 51 task 膨胀是这条规则缺失的直接后果——5 �
 - 前台是vue3+Element Plus+three.js，后台使用node.js
 - 数据库采用sqlite，但不要用编译版本，直接用js的版本即可
 - 注意你的开发调试环境是windows，不要用bash脚本，尽量生成powershell脚本，注意powershell脚本用来隔开不同命令用的是分号而不是&&
-- 服务目录为server，jest等应该在这个下面运行
+- 服务目录为server，后台测试、jest等应该在这个下面运行
+
+# 任务完成以后应该用checkbox语法进行标记，例如：
+- `- [ ] T020 [US2] **Step 1: Write the failing test**` → `- [x] T020 [US2] **Step 1: Write the failing test**`
+- 任务文件为目录在的tasks.md，其目录的plan.md是方案文件，执行里面的任务时务必要引用这个plan.md。其下的data-models.md是数据模型文件，contracts目录下的东西是契约文件
