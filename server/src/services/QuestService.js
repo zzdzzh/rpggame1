@@ -196,20 +196,6 @@ class QuestService {
       }
 
       if (quest.max_concurrent_limit > 0) {
-        const sameTypeCount = await PlayerQuest.count({
-          where: {
-            character_id: characterId,
-            status: ['accepted', 'in_progress', 'ready_for_reward']
-          },
-          include: [
-            {
-              model: Quest,
-              where: { quest_id: quest.quest_id }
-            }
-          ],
-          transaction
-        });
-
         const sameQuestTypeCount = await PlayerQuest.count({
           where: {
             character_id: characterId,

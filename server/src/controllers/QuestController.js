@@ -11,7 +11,8 @@ class QuestController {
       const result = await QuestService.getAvailableQuests(characterId, req.query);
       res.json(result);
     } catch (error) {
-      res.status(400).json({ error: error.message });
+      const statusCode = error.statusCode || 400;
+      res.status(statusCode).json({ error: error.message });
     }
   }
 
@@ -45,7 +46,8 @@ class QuestController {
       const result = await QuestService.getMyQuests(characterId, req.query);
       res.json(result);
     } catch (error) {
-      res.status(400).json({ error: error.message });
+      const statusCode = error.statusCode || 400;
+      res.status(statusCode).json({ error: error.message });
     }
   }
 }
