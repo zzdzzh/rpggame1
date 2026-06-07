@@ -4,7 +4,7 @@ class QuestController {
   async getAvailableQuests(req, res) {
     try {
       const characterId = req.characterId || Number(req.query.character_id);
-      if (!characterId) {
+      if (!Number.isFinite(characterId) || characterId <= 0) {
         return res.status(400).json({ error: 'character_id is required' });
       }
 
@@ -21,10 +21,10 @@ class QuestController {
       const characterId = req.characterId || Number(req.body.character_id);
       const questId = Number(req.params.questId);
 
-      if (!characterId) {
+      if (!Number.isFinite(characterId) || characterId <= 0) {
         return res.status(400).json({ error: 'character_id is required' });
       }
-      if (!questId) {
+      if (!Number.isFinite(questId) || questId <= 0) {
         return res.status(400).json({ error: 'questId is required' });
       }
 
@@ -39,7 +39,7 @@ class QuestController {
   async getMyQuests(req, res) {
     try {
       const characterId = req.characterId || Number(req.query.character_id);
-      if (!characterId) {
+      if (!Number.isFinite(characterId) || characterId <= 0) {
         return res.status(400).json({ error: 'character_id is required' });
       }
 

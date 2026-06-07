@@ -30,7 +30,7 @@ class QuestService {
 
     const character = await Character.findByPk(characterId);
     if (!character) {
-      throw new Error('Character not found');
+      throw Object.assign(new Error('Character not found'), { statusCode: 404 });
     }
 
     const characterLevel = level !== undefined ? Number(level) : character.level;
@@ -252,7 +252,9 @@ class QuestService {
         quest: questWithProgress
       };
     } catch (error) {
-      await transaction.rollback();
+      if (!transaction.finished) {
+        await transaction.rollback();
+      }
       throw error;
     }
   }
@@ -262,7 +264,7 @@ class QuestService {
 
     const character = await Character.findByPk(characterId);
     if (!character) {
-      throw new Error('Character not found');
+      throw Object.assign(new Error('Character not found'), { statusCode: 404 });
     }
 
     const where = { character_id: characterId };
