@@ -8,6 +8,7 @@ const characterRoutes = require('./routes/characterRoutes');
 const backgroundRoutes = require('./routes/backgroundRoutes');
 const itemRoutes = require('./routes/itemRoutes');
 const questRoutes = require('./routes/questRoutes');
+const questAdminRoutes = require('./routes/questAdminRoutes');
 const QuestProgressService = require('./services/QuestProgressService');
 const characterService = require('./services/CharacterService');
 const Character = require('./models/Character');
@@ -29,6 +30,7 @@ app.use('/api/characters', characterRoutes);
 app.use('/api', backgroundRoutes);
 app.use('/api', itemRoutes);
 app.use('/api/quests', questRoutes);
+app.use('/api/admin/quests', questAdminRoutes);
 
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
