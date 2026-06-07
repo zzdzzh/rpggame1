@@ -1,5 +1,4 @@
 const path = require('path');
-
 const dbPath = path.join(__dirname, '..', '..', 'data', 'game.db');
 
 module.exports = {

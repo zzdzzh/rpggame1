@@ -2,6 +2,13 @@ const { Character, ItemDefinition, PlayerItem, sequelize } = require('../models'
 
 const SLOTS_TOTAL = 200;
 
+const EQUIP_SLOT_FIELDS = {
+  weapon: 'equip_weapon_id',
+  helmet: 'equip_helmet_id',
+  armor: 'equip_armor_id',
+  accessory: 'equip_accessory_id'
+};
+
 async function addItems(characterId, items) {
   if (!Array.isArray(items) || items.length === 0) {
     throw new Error('items must be a non-empty array');
@@ -258,9 +265,8 @@ async function useConsumable(characterId, playerItemId, quantity) {
 
   try {
     const row = await PlayerItem.findByPk(playerItemId, {
-      include: [{ model: ItemDefinition, as: 'ItemDefinition' }],
-      transaction,
-      lock: transaction.LOCK.UPDATE
+      include: [{ model: ItemDefinition }],
+      transaction
     });
 
     if (!row) {
