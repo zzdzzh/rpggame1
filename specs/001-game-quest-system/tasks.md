@@ -14,7 +14,7 @@
 
 **Purpose**: 确认现有项目依赖已满足任务系统需求，无需新增运行时组件
 
-- [ ] T001 验证 `server/package.json` 已包含 Express/Sequelize/SQLite/Socket.io，确认零新增依赖
+- [x] T001 验证 `server/package.json` 已包含 Express/Sequelize/SQLite/Socket.io，确认零新增依赖
 
 ---
 
@@ -24,11 +24,11 @@
 
 **⚠️ CRITICAL**: 所有用户故事依赖本阶段的模型和数据库表
 
-- [ ] T002 [P] 创建 Quest 模型 `server/src/models/Quest.js`（含 objectives_json / rewards_json / trigger_conditions_json / prerequisites_json JSON 字段）
-- [ ] T003 [P] 创建 PlayerQuest 模型 `server/src/models/PlayerQuest.js`（含 progress_json JSON 字段与 status ENUM）
-- [ ] T004 [P] 创建 Quest 表迁移 `server/src/migrations/YYYYMMDDHHMMSS-create-quest.js`
-- [ ] T005 [P] 创建 PlayerQuest 表迁移 `server/src/migrations/YYYYMMDDHHMMSS-create-player-quest.js`
-- [ ] T006 执行数据库迁移 `npm run migrate`
+- [x] T002 [P] 创建 Quest 模型 `server/src/models/Quest.js`（含 objectives_json / rewards_json / trigger_conditions_json / prerequisites_json JSON 字段）
+- [x] T003 [P] 创建 PlayerQuest 模型 `server/src/models/PlayerQuest.js`（含 progress_json JSON 字段与 status ENUM）
+- [x] T004 [P] 创建 Quest 表迁移 `server/src/migrations/YYYYMMDDHHMMSS-create-quest.js`
+- [x] T005 [P] 创建 PlayerQuest 表迁移 `server/src/migrations/YYYYMMDDHHMMSS-create-player-quest.js`
+- [x] T006 执行数据库迁移 `npm run migrate`
 
 **Checkpoint**: 数据库表已创建，模型可通过 Sequelize 正常读写
 
@@ -42,11 +42,11 @@
 
 ### Implementation for User Story 1
 
-- [ ] T007 实现 QuestService 查询与接取逻辑 `server/src/services/QuestService.js`（getAvailableQuests / acceptQuest）
-- [ ] T008 实现 QuestController 玩家查询与接取接口 `server/src/controllers/QuestController.js`
-- [ ] T009 创建 questRoutes `server/src/routes/questRoutes.js`
-- [ ] T010 注册 questRoutes 到主应用 `server/src/index.js`
-- [ ] T011 编写 US1 集成测试 `server/tests/integration/quest-us1.integration.test.js`
+- [x] T007 实现 QuestService 查询与接取逻辑 `server/src/services/QuestService.js`（getAvailableQuests / acceptQuest）
+- [x] T008 实现 QuestController 玩家查询与接取接口 `server/src/controllers/QuestController.js`
+- [x] T009 创建 questRoutes `server/src/routes/questRoutes.js`
+- [x] T010 注册 questRoutes 到主应用 `server/src/index.js`
+- [x] T011 编写 US1 集成测试 `server/tests/integration/quest-us1.integration.test.js`
 
 **Checkpoint**: US1 可独立运行并通过测试：玩家能查询可接任务并成功接取
 
@@ -60,11 +60,11 @@
 
 ### Implementation for User Story 2
 
-- [ ] T012 实现 QuestProgressService 进度跟踪与提交 `server/src/services/QuestProgressService.js`（updateProgress / submitQuest）
-- [ ] T013 扩展 QuestController 添加提交接口 `server/src/controllers/QuestController.js`
-- [ ] T014 扩展 questRoutes 添加提交路由 `server/src/routes/questRoutes.js`
-- [ ] T015 实现 Socket.io 任务进度推送 `server/src/services/QuestProgressService.js`（emit `questUpdate` / `questReadyForReward`）
-- [ ] T016 编写 US2 集成测试 `server/tests/integration/quest-us2.integration.test.js`
+- [x] T012 实现 QuestProgressService 进度跟踪与提交 `server/src/services/QuestProgressService.js`（updateProgress / submitQuest）
+- [x] T013 扩展 QuestController 添加提交接口 `server/src/controllers/QuestController.js`
+- [x] T014 扩展 questRoutes 添加提交路由 `server/src/routes/questRoutes.js`
+- [x] T015 实现 Socket.io 任务进度推送 `server/src/services/QuestProgressService.js`（emit `questUpdate` / `questReadyForReward`）
+- [x] T016 编写 US2 集成测试 `server/tests/integration/quest-us2.integration.test.js`
 
 **Checkpoint**: US2 可独立运行并通过测试：进度更新、提交任务、WebSocket 推送均正常
 
@@ -78,10 +78,10 @@
 
 ### Implementation for User Story 3
 
-- [ ] T017 实现 QuestRewardService 奖励领取 `server/src/services/QuestRewardService.js`（claimReward，对接 InventoryService.addItems）
-- [ ] T018 扩展 QuestController 添加领奖接口 `server/src/controllers/QuestController.js`
-- [ ] T019 扩展 questRoutes 添加领奖路由 `server/src/routes/questRoutes.js`
-- [ ] T020 编写 US3 集成测试 `server/tests/integration/quest-us3.integration.test.js`
+- [x] T017 实现 QuestRewardService 奖励领取 `server/src/services/QuestRewardService.js`（claimReward，对接 InventoryService.addItems）
+- [x] T018 扩展 QuestController 添加领奖接口 `server/src/controllers/QuestController.js`
+- [x] T019 扩展 questRoutes 添加领奖路由 `server/src/routes/questRoutes.js`
+- [x] T020 编写 US3 集成测试 `server/tests/integration/quest-us3.integration.test.js`
 
 **Checkpoint**: US3 可独立运行并通过测试：奖励一次性发放，事务回滚正确
 
@@ -95,11 +95,11 @@
 
 ### Implementation for User Story 4
 
-- [ ] T021 实现 QuestAdminService 管理 CRUD `server/src/services/QuestAdminService.js`
-- [ ] T022 实现 QuestAdminController 管理接口 `server/src/controllers/QuestAdminController.js`
-- [ ] T023 创建 questAdminRoutes `server/src/routes/questAdminRoutes.js`
-- [ ] T024 注册 questAdminRoutes 到主应用 `server/src/index.js`
-- [ ] T025 编写 US4 集成测试 `server/tests/integration/quest-us4.integration.test.js`
+- [x] T021 实现 QuestAdminService 管理 CRUD `server/src/services/QuestAdminService.js`
+- [x] T022 实现 QuestAdminController 管理接口 `server/src/controllers/QuestAdminController.js`
+- [x] T023 创建 questAdminRoutes `server/src/routes/questAdminRoutes.js`
+- [x] T024 注册 questAdminRoutes 到主应用 `server/src/index.js`
+- [x] T025 编写 US4 集成测试 `server/tests/integration/quest-us4.integration.test.js`
 
 **Checkpoint**: US4 可独立运行并通过测试：管理端 CRUD 与上架/下架功能正常
 
@@ -109,11 +109,11 @@
 
 **Purpose**: 单元测试补全、跨故事回归验证
 
-- [ ] T026 [P] 编写 QuestService 单元测试 `server/tests/unit/QuestService.test.js`
-- [ ] T027 [P] 编写 QuestProgressService 单元测试 `server/tests/unit/QuestProgressService.test.js`
-- [ ] T028 [P] 编写 QuestRewardService 单元测试 `server/tests/unit/QuestRewardService.test.js`
-- [ ] T029 [P] 编写 QuestAdminService 单元测试 `server/tests/unit/QuestAdminService.test.js`
-- [ ] T030 运行完整测试套件验证 `npm test`
+- [x] T026 [P] 编写 QuestService 单元测试 `server/tests/unit/QuestService.test.js`
+- [x] T027 [P] 编写 QuestProgressService 单元测试 `server/tests/unit/QuestProgressService.test.js`
+- [x] T028 [P] 编写 QuestRewardService 单元测试 `server/tests/unit/QuestRewardService.test.js`
+- [x] T029 [P] 编写 QuestAdminService 单元测试 `server/tests/unit/QuestAdminService.test.js`
+- [x] T030 运行完整测试套件验证 `npm test`
 
 ---
 
