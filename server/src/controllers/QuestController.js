@@ -1,5 +1,6 @@
 const QuestService = require('../services/QuestService');
 const QuestProgressService = require('../services/QuestProgressService');
+const QuestRewardService = require('../services/QuestRewardService');
 
 class QuestController {
   async getAvailableQuests(req, res) {
@@ -65,6 +66,26 @@ class QuestController {
       }
 
       const result = await QuestProgressService.submitQuest(characterId, playerQuestId);
+      res.json(result);
+    } catch (error) {
+      const statusCode = error.statusCode || 400;
+      res.status(statusCode).json({ error: error.message });
+    }
+  }
+
+  async claimReward(req, res) {
+    try {
+      const characterId = req.characterId || Number(req.body.character_id);
+      const playerQuestId = Number(req.params.playerQuestId);
+
+      if (!Number.isFinite(characterId) || characterId <= 0) {
+        return res.status(400).json({ error: 'character_id is required' });
+      }
+      if (!Number.isFinite(playerQuestId) || playerQuestId <= 0) {
+        return res.status(400).json({ error: 'playerQuestId is required' });
+      }
+
+      const result = await QuestRewardService.claimReward(characterId, playerQuestId);
       res.json(result);
     } catch (error) {
       const statusCode = error.statusCode || 400;

@@ -7,5 +7,6 @@ router.get('/available', QuestController.getAvailableQuests);
 router.post('/:questId/accept', QuestController.acceptQuest);
 router.get('/my', QuestController.getMyQuests);
 router.post('/:playerQuestId/submit', QuestController.submitQuest);
+router.post('/:playerQuestId/claim', QuestController.claimReward);
 
 module.exports = router;

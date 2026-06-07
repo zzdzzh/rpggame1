@@ -9,12 +9,12 @@ const EQUIP_SLOT_FIELDS = {
   accessory: 'equip_accessory_id'
 };
 
-async function addItems(characterId, items) {
+async function addItems(characterId, items, externalTransaction) {
   if (!Array.isArray(items) || items.length === 0) {
     throw new Error('items must be a non-empty array');
   }
 
-  const transaction = await sequelize.transaction();
+  const transaction = externalTransaction || await sequelize.transaction();
 
   try {
     const character = await Character.findByPk(characterId, { transaction });
@@ -130,7 +130,9 @@ async function addItems(characterId, items) {
       }
     }
 
-    await transaction.commit();
+    if (!externalTransaction) {
+      await transaction.commit();
+    }
 
     return {
       success: true,
@@ -138,7 +140,9 @@ async function addItems(characterId, items) {
       failed: []
     };
   } catch (error) {
-    await transaction.rollback();
+    if (!externalTransaction) {
+      await transaction.rollback();
+    }
     throw error;
   }
 }
