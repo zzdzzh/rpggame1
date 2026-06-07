@@ -152,7 +152,7 @@ async function discardItem(characterId, playerItemId, quantity) {
 
   try {
     const row = await PlayerItem.findByPk(playerItemId, {
-      include: [{ model: ItemDefinition }],
+      include: [{ model: ItemDefinition, as: 'ItemDefinition' }],
       transaction
     });
 
@@ -213,6 +213,7 @@ async function getInventory(characterId, filters = {}) {
     include: [
       {
         model: ItemDefinition,
+        as: 'ItemDefinition',
         where: includeWhere
       }
     ]
@@ -277,48 +278,28 @@ async function useConsumable(characterId, playerItemId, quantity) {
     }
 
     if (row.ItemDefinition.item_type !== 'consumable') {
-      throw new Error('Item is not a consumable');
+      throw new Error('Item is not consumable');
     }
 
     if (quantity > row.quantity) {
       throw new Error('Use quantity exceeds current quantity');
     }
 
-    const effect = row.ItemDefinition.consumable_effect;
-    if (!effect || !effect.type || !effect.target || effect.value === undefined) {
-      throw new Error('Invalid consumable effect configuration');
-    }
-
     const character = await Character.findByPk(characterId, { transaction });
-    if (!character) {
-      throw new Error('Character not found');
-    }
-
-    let actualValue = 0;
-    let reason = null;
+    const effect = row.ItemDefinition.consumable_effect || {};
+    let restoredHp = 0;
+    let restoredMp = 0;
 
     if (effect.type === 'restore') {
       if (effect.target === 'hp') {
         const before = character.hp;
-        const after = Math.min(character.hp + effect.value, character.max_hp);
-        actualValue = after - before;
-        if (actualValue < effect.value) {
-          reason = 'capped_by_max_hp';
-        }
-        character.hp = after;
+        character.hp = Math.min(character.hp + effect.value * quantity, character.max_hp);
+        restoredHp = character.hp - before;
       } else if (effect.target === 'mp') {
         const before = character.mp;
-        const after = Math.min(character.mp + effect.value, character.max_mp);
-        actualValue = after - before;
-        if (actualValue < effect.value) {
-          reason = 'capped_by_max_mp';
-        }
-        character.mp = after;
-      } else {
-        throw new Error(`Unsupported restore target: ${effect.target}`);
+        character.mp = Math.min(character.mp + effect.value * quantity, character.max_mp);
+        restoredMp = character.mp - before;
       }
-    } else {
-      throw new Error(`Unsupported consumable effect type: ${effect.type}`);
     }
 
     await character.save({ transaction });
@@ -335,22 +316,11 @@ async function useConsumable(characterId, playerItemId, quantity) {
 
     return {
       success: true,
-      effect: {
-        type: effect.type,
-        target: effect.target,
-        value: effect.value,
-        actual_value: actualValue,
-        reason
-      },
-      character: {
-        character_id: character.character_id,
-        hp: character.hp,
-        max_hp: character.max_hp,
-        mp: character.mp,
-        max_mp: character.max_mp
-      },
-      remaining_quantity: remaining,
-      player_item_id: playerItemId
+      restored_hp: restoredHp,
+      restored_mp: restoredMp,
+      new_hp: character.hp,
+      new_mp: character.mp,
+      remaining_quantity: remaining
     };
   } catch (error) {
     await transaction.rollback();
@@ -358,13 +328,39 @@ async function useConsumable(characterId, playerItemId, quantity) {
   }
 }
 
+const EQUIP_SLOT_MAP = {
+  weapon: 'equip_weapon_id',
+  helmet: 'equip_helmet_id',
+  armor: 'equip_armor_id',
+  accessory: 'equip_accessory_id'
+};
+
+async function _applyEquipmentStats(character, itemDefinition, sign = 1) {
+  const stats = itemDefinition.equipment_stats || {};
+  if (stats.attack) character.attack += sign * stats.attack;
+  if (stats.defense) character.defense += sign * stats.defense;
+  if (stats.max_hp) {
+    character.max_hp += sign * stats.max_hp;
+    character.hp = Math.min(character.hp, character.max_hp);
+  }
+  if (stats.max_mp) {
+    character.max_mp += sign * stats.max_mp;
+    character.mp = Math.min(character.mp, character.max_mp);
+  }
+}
+
 async function equipItem(characterId, playerItemId) {
+  if (!playerItemId) {
+    throw new Error('playerItemId is required');
+  }
+
   const transaction = await sequelize.transaction();
 
   try {
     const row = await PlayerItem.findByPk(playerItemId, {
-      include: [{ model: ItemDefinition }],
-      transaction
+      include: [{ model: ItemDefinition, as: 'ItemDefinition' }],
+      transaction,
+      lock: transaction.LOCK.UPDATE
     });
 
     if (!row) {
@@ -375,70 +371,63 @@ async function equipItem(characterId, playerItemId) {
       throw new Error('PlayerItem does not belong to character');
     }
 
-    if (row.ItemDefinition.item_type !== 'equipment') {
+    const definition = row.ItemDefinition;
+
+    if (definition.item_type !== 'equipment') {
       throw new Error('Item is not equipment');
     }
 
-    const slot = row.ItemDefinition.equip_slot;
-    if (!slot || !EQUIP_SLOT_FIELDS[slot]) {
-      throw new Error('Invalid equipment slot');
+    if (!definition.equip_slot) {
+      throw new Error('Equipment has no equip_slot defined');
+    }
+
+    const slotField = EQUIP_SLOT_MAP[definition.equip_slot];
+    if (!slotField) {
+      throw new Error(`Unknown equip slot: ${definition.equip_slot}`);
     }
 
     const character = await Character.findByPk(characterId, { transaction });
-    if (!character) {
-      throw new Error('Character not found');
-    }
 
-    const slotField = EQUIP_SLOT_FIELDS[slot];
-    const previousItemId = character[slotField];
-    let previousItem = null;
+    let replaced = false;
+    const oldItemDefinitionId = character[slotField];
 
-    if (previousItemId) {
-      const prevRow = await PlayerItem.findByPk(previousItemId, {
-        include: [{ model: ItemDefinition }],
-        transaction
-      });
-      if (prevRow) {
-        previousItem = {
-          player_item_id: prevRow.player_item_id,
-          name: prevRow.ItemDefinition.name
-        };
-        const stats = prevRow.ItemDefinition.equipment_stats || {};
-        character.attack = Math.max(0, character.attack - (stats.attack || 0));
-        character.defense = Math.max(0, character.defense - (stats.defense || 0));
-        character.max_hp = Math.max(1, character.max_hp - (stats.max_hp || 0));
-        character.max_mp = Math.max(0, character.max_mp - (stats.max_mp || 0));
-        character.hp = Math.min(character.hp, character.max_hp);
-        character.mp = Math.min(character.mp, character.max_mp);
+    if (oldItemDefinitionId) {
+      const oldDefinition = await ItemDefinition.findByPk(oldItemDefinitionId, { transaction });
+      if (oldDefinition) {
+        await _applyEquipmentStats(character, oldDefinition, -1);
+
+        // Return old equipment to inventory
+        await PlayerItem.create({
+          character_id: characterId,
+          item_definition_id: oldDefinition.item_definition_id,
+          quantity: 1,
+          is_bound: false,
+          acquired_at: new Date()
+        }, { transaction });
       }
+      replaced = true;
     }
 
-    const newStats = row.ItemDefinition.equipment_stats || {};
-    character.attack += (newStats.attack || 0);
-    character.defense += (newStats.defense || 0);
-    character.max_hp += (newStats.max_hp || 0);
-    character.max_mp += (newStats.max_mp || 0);
-    character.hp = Math.min(character.hp, character.max_hp);
-    character.mp = Math.min(character.mp, character.max_mp);
+    // Remove new equipment from inventory
+    const remaining = row.quantity - 1;
+    if (remaining === 0) {
+      await row.destroy({ transaction });
+    } else {
+      row.quantity = remaining;
+      await row.save({ transaction });
+    }
 
-    character[slotField] = playerItemId;
+    // Apply new equipment stats
+    await _applyEquipmentStats(character, definition, 1);
+    character[slotField] = definition.item_definition_id;
     await character.save({ transaction });
 
     await transaction.commit();
 
     return {
       success: true,
-      equipped_slot: slot,
-      previous_item: previousItem,
-      character: {
-        character_id: character.character_id,
-        attack: character.attack,
-        defense: character.defense,
-        max_hp: character.max_hp,
-        max_mp: character.max_mp,
-        hp: character.hp,
-        mp: character.mp
-      }
+      equipped_slot: definition.equip_slot,
+      replaced
     };
   } catch (error) {
     await transaction.rollback();
@@ -447,8 +436,13 @@ async function equipItem(characterId, playerItemId) {
 }
 
 async function unequipItem(characterId, slot) {
-  if (!slot || !EQUIP_SLOT_FIELDS[slot]) {
-    throw new Error('Invalid slot');
+  if (!slot) {
+    throw new Error('slot is required');
+  }
+
+  const slotField = EQUIP_SLOT_MAP[slot];
+  if (!slotField) {
+    throw new Error(`Unknown equip slot: ${slot}`);
   }
 
   const transaction = await sequelize.transaction();
@@ -459,30 +453,37 @@ async function unequipItem(characterId, slot) {
       throw new Error('Character not found');
     }
 
-    const slotField = EQUIP_SLOT_FIELDS[slot];
-    const playerItemId = character[slotField];
-
-    if (!playerItemId) {
-      throw new Error('No item equipped in this slot');
+    const itemDefinitionId = character[slotField];
+    if (!itemDefinitionId) {
+      throw new Error(`Slot ${slot} is empty`);
     }
 
-    const row = await PlayerItem.findByPk(playerItemId, {
-      include: [{ model: ItemDefinition }],
+    const definition = await ItemDefinition.findByPk(itemDefinitionId, { transaction });
+    if (!definition) {
+      throw new Error('Equipped item definition not found');
+    }
+
+    // Check inventory capacity
+    const currentSlots = await PlayerItem.count({
+      where: { character_id: characterId },
       transaction
     });
 
-    if (!row) {
-      throw new Error('Equipped item not found in inventory');
+    if (currentSlots >= SLOTS_TOTAL) {
+      throw new Error('Inventory full, cannot unequip');
     }
 
-    const stats = row.ItemDefinition.equipment_stats || {};
-    character.attack = Math.max(0, character.attack - (stats.attack || 0));
-    character.defense = Math.max(0, character.defense - (stats.defense || 0));
-    character.max_hp = Math.max(1, character.max_hp - (stats.max_hp || 0));
-    character.max_mp = Math.max(0, character.max_mp - (stats.max_mp || 0));
-    character.hp = Math.min(character.hp, character.max_hp);
-    character.mp = Math.min(character.mp, character.max_mp);
+    // Return to inventory
+    await PlayerItem.create({
+      character_id: characterId,
+      item_definition_id: definition.item_definition_id,
+      quantity: 1,
+      is_bound: false,
+      acquired_at: new Date()
+    }, { transaction });
 
+    // Remove stats
+    await _applyEquipmentStats(character, definition, -1);
     character[slotField] = null;
     await character.save({ transaction });
 
@@ -490,49 +491,13 @@ async function unequipItem(characterId, slot) {
 
     return {
       success: true,
-      unequipped_item: {
-        player_item_id: row.player_item_id,
-        name: row.ItemDefinition.name
-      },
-      character: {
-        character_id: character.character_id,
-        attack: character.attack,
-        defense: character.defense,
-        max_hp: character.max_hp,
-        max_mp: character.max_mp,
-        hp: character.hp,
-        mp: character.mp
-      }
+      unequipped_slot: slot,
+      item_definition_id: definition.item_definition_id
     };
   } catch (error) {
     await transaction.rollback();
     throw error;
   }
-}
-
-async function recalculateCharacterStats(character, transaction) {
-  const slots = ['equip_weapon_id', 'equip_helmet_id', 'equip_armor_id', 'equip_accessory_id'];
-  let bonus = { attack: 0, defense: 0, max_hp: 0, max_mp: 0 };
-
-  for (const slotField of slots) {
-    const itemId = character[slotField];
-    if (!itemId) continue;
-
-    const row = await PlayerItem.findByPk(itemId, {
-      include: [{ model: ItemDefinition }],
-      transaction
-    });
-
-    if (row && row.ItemDefinition.equipment_stats) {
-      const stats = row.ItemDefinition.equipment_stats;
-      bonus.attack += stats.attack || 0;
-      bonus.defense += stats.defense || 0;
-      bonus.max_hp += stats.max_hp || 0;
-      bonus.max_mp += stats.max_mp || 0;
-    }
-  }
-
-  return bonus;
 }
 
 module.exports = {
@@ -542,6 +507,5 @@ module.exports = {
   getInventory,
   useConsumable,
   equipItem,
-  unequipItem,
-  recalculateCharacterStats
+  unequipItem
 };

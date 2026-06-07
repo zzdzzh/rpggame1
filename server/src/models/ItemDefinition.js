@@ -29,11 +29,7 @@ const ItemDefinition = sequelize.define('ItemDefinition', {
   },
   max_stack: {
     type: DataTypes.INTEGER,
-    defaultValue: 99
-  },
-  level_requirement: {
-    type: DataTypes.INTEGER,
-    defaultValue: 0
+    defaultValue: 1
   },
   is_bind_on_pickup: {
     type: DataTypes.BOOLEAN,

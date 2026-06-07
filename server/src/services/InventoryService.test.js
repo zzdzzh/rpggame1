@@ -66,6 +66,316 @@ describe('InventoryService', () => {
     await sequelize.close();
   });
 
+  describe('useConsumable', () => {
+    let healthPotion;
+    let manaPotion;
+
+    beforeEach(async () => {
+      healthPotion = await ItemDefinition.create({
+        name: 'Health Potion',
+        item_type: 'consumable',
+        rarity: 'common',
+        icon: 'potion_red',
+        max_stack: 99,
+        is_bind_on_pickup: false,
+        consumable_effect: { type: 'restore', target: 'hp', value: 30 }
+      });
+      manaPotion = await ItemDefinition.create({
+        name: 'Mana Potion',
+        item_type: 'consumable',
+        rarity: 'common',
+        icon: 'potion_blue',
+        max_stack: 99,
+        is_bind_on_pickup: false,
+        consumable_effect: { type: 'restore', target: 'mp', value: 20 }
+      });
+    });
+
+    it('restores hp and decrements quantity', async () => {
+      character.hp = 50;
+      await character.save();
+      const result = await InventoryService.addItems(character.character_id, [
+        { item_definition_id: healthPotion.item_definition_id, quantity: 3 }
+      ]);
+      const playerItem = await PlayerItem.findByPk(result.added[0].player_item_id);
+
+      const useResult = await InventoryService.useConsumable(
+        character.character_id,
+        playerItem.player_item_id,
+        1
+      );
+
+      expect(useResult.success).toBe(true);
+      expect(useResult.restored_hp).toBe(30);
+      expect(useResult.new_hp).toBe(80);
+
+      const updatedChar = await Character.findByPk(character.character_id);
+      expect(updatedChar.hp).toBe(80);
+
+      const updatedItem = await PlayerItem.findByPk(playerItem.player_item_id);
+      expect(updatedItem.quantity).toBe(2);
+    });
+
+    it('does not exceed max_hp', async () => {
+      character.hp = 90;
+      await character.save();
+      const result = await InventoryService.addItems(character.character_id, [
+        { item_definition_id: healthPotion.item_definition_id, quantity: 1 }
+      ]);
+      const playerItem = await PlayerItem.findByPk(result.added[0].player_item_id);
+
+      const useResult = await InventoryService.useConsumable(
+        character.character_id,
+        playerItem.player_item_id,
+        1
+      );
+
+      expect(useResult.restored_hp).toBe(10);
+      expect(useResult.new_hp).toBe(100);
+    });
+
+    it('does not exceed max_mp', async () => {
+      character.mp = 45;
+      await character.save();
+      const result = await InventoryService.addItems(character.character_id, [
+        { item_definition_id: manaPotion.item_definition_id, quantity: 1 }
+      ]);
+      const playerItem = await PlayerItem.findByPk(result.added[0].player_item_id);
+
+      const useResult = await InventoryService.useConsumable(
+        character.character_id,
+        playerItem.player_item_id,
+        1
+      );
+
+      expect(useResult.restored_mp).toBe(5);
+      expect(useResult.new_mp).toBe(50);
+    });
+
+    it('deletes row when quantity reaches 0', async () => {
+      character.hp = 50;
+      await character.save();
+      const result = await InventoryService.addItems(character.character_id, [
+        { item_definition_id: healthPotion.item_definition_id, quantity: 1 }
+      ]);
+      const playerItem = await PlayerItem.findByPk(result.added[0].player_item_id);
+
+      await InventoryService.useConsumable(
+        character.character_id,
+        playerItem.player_item_id,
+        1
+      );
+
+      const deleted = await PlayerItem.findByPk(playerItem.player_item_id);
+      expect(deleted).toBeNull();
+    });
+
+    it('rejects when item is not consumable', async () => {
+      const result = await InventoryService.addItems(character.character_id, [
+        { item_definition_id: swordDef.item_definition_id, quantity: 1 }
+      ]);
+      const playerItem = await PlayerItem.findByPk(result.added[0].player_item_id);
+
+      await expect(
+        InventoryService.useConsumable(character.character_id, playerItem.player_item_id, 1)
+      ).rejects.toThrow(/consumable/);
+    });
+
+    it('rejects when quantity exceeds current', async () => {
+      const result = await InventoryService.addItems(character.character_id, [
+        { item_definition_id: healthPotion.item_definition_id, quantity: 2 }
+      ]);
+      const playerItem = await PlayerItem.findByPk(result.added[0].player_item_id);
+
+      await expect(
+        InventoryService.useConsumable(character.character_id, playerItem.player_item_id, 3)
+      ).rejects.toThrow();
+    });
+  });
+
+  describe('equipItem', () => {
+    let helmetDef;
+    let armorDef;
+
+    beforeEach(async () => {
+      helmetDef = await ItemDefinition.create({
+        name: 'Iron Helmet',
+        item_type: 'equipment',
+        rarity: 'common',
+        icon: 'helmet_iron',
+        max_stack: 1,
+        is_bind_on_pickup: false,
+        equipment_stats: { defense: 5 },
+        equip_slot: 'helmet'
+      });
+      armorDef = await ItemDefinition.create({
+        name: 'Iron Armor',
+        item_type: 'equipment',
+        rarity: 'common',
+        icon: 'armor_iron',
+        max_stack: 1,
+        is_bind_on_pickup: false,
+        equipment_stats: { defense: 10 },
+        equip_slot: 'armor'
+      });
+    });
+
+    it('equips item and increases stats', async () => {
+      const result = await InventoryService.addItems(character.character_id, [
+        { item_definition_id: swordDef.item_definition_id, quantity: 1 }
+      ]);
+      const playerItem = await PlayerItem.findByPk(result.added[0].player_item_id);
+
+      const equipResult = await InventoryService.equipItem(
+        character.character_id,
+        playerItem.player_item_id
+      );
+
+      expect(equipResult.success).toBe(true);
+      expect(equipResult.equipped_slot).toBe('weapon');
+
+      const updatedChar = await Character.findByPk(character.character_id);
+      expect(updatedChar.equip_weapon_id).toBe(swordDef.item_definition_id);
+      expect(updatedChar.attack).toBe(20);
+    });
+
+    it('replaces old equipment and returns it to inventory', async () => {
+      const steelSwordDef = await ItemDefinition.create({
+        name: 'Steel Sword',
+        item_type: 'equipment',
+        rarity: 'uncommon',
+        icon: 'sword_steel',
+        max_stack: 1,
+        is_bind_on_pickup: false,
+        equipment_stats: { attack: 15 },
+        equip_slot: 'weapon'
+      });
+
+      const addResult1 = await InventoryService.addItems(character.character_id, [
+        { item_definition_id: swordDef.item_definition_id, quantity: 1 }
+      ]);
+      await InventoryService.equipItem(character.character_id, addResult1.added[0].player_item_id);
+
+      const addResult2 = await InventoryService.addItems(character.character_id, [
+        { item_definition_id: steelSwordDef.item_definition_id, quantity: 1 }
+      ]);
+      const equipResult = await InventoryService.equipItem(
+        character.character_id,
+        addResult2.added[0].player_item_id
+      );
+
+      expect(equipResult.success).toBe(true);
+      expect(equipResult.replaced).toBe(true);
+
+      const updatedChar = await Character.findByPk(character.character_id);
+      expect(updatedChar.equip_weapon_id).toBe(steelSwordDef.item_definition_id);
+      expect(updatedChar.attack).toBe(25);
+
+      const inventory = await InventoryService.getInventory(character.character_id);
+      const oldSword = inventory.items.find(
+        i => i.item_definition_id === swordDef.item_definition_id
+      );
+      expect(oldSword).toBeDefined();
+      expect(oldSword.quantity).toBe(1);
+    });
+
+    it('rejects when item is not equipment', async () => {
+      const result = await InventoryService.addItems(character.character_id, [
+        { item_definition_id: potionDef.item_definition_id, quantity: 1 }
+      ]);
+      const playerItem = await PlayerItem.findByPk(result.added[0].player_item_id);
+
+      await expect(
+        InventoryService.equipItem(character.character_id, playerItem.player_item_id)
+      ).rejects.toThrow(/equipment/);
+    });
+
+    it('rejects when player item belongs to different character', async () => {
+      const otherChar = await Character.create({ name: 'Other', character_type: 'player' });
+      const result = await InventoryService.addItems(otherChar.character_id, [
+        { item_definition_id: swordDef.item_definition_id, quantity: 1 }
+      ]);
+
+      await expect(
+        InventoryService.equipItem(character.character_id, result.added[0].player_item_id)
+      ).rejects.toThrow();
+    });
+  });
+
+  describe('unequipItem', () => {
+    let helmetDef;
+
+    beforeEach(async () => {
+      helmetDef = await ItemDefinition.create({
+        name: 'Iron Helmet',
+        item_type: 'equipment',
+        rarity: 'common',
+        icon: 'helmet_iron',
+        max_stack: 1,
+        is_bind_on_pickup: false,
+        equipment_stats: { defense: 5 },
+        equip_slot: 'helmet'
+      });
+    });
+
+    it('unequips item and returns to inventory', async () => {
+      const result = await InventoryService.addItems(character.character_id, [
+        { item_definition_id: helmetDef.item_definition_id, quantity: 1 }
+      ]);
+      await InventoryService.equipItem(character.character_id, result.added[0].player_item_id);
+
+      const unequipResult = await InventoryService.unequipItem(
+        character.character_id,
+        'helmet'
+      );
+
+      expect(unequipResult.success).toBe(true);
+
+      const updatedChar = await Character.findByPk(character.character_id);
+      expect(updatedChar.equip_helmet_id).toBeNull();
+      expect(updatedChar.defense).toBe(5);
+
+      const inventory = await InventoryService.getInventory(character.character_id);
+      const helmet = inventory.items.find(
+        i => i.item_definition_id === helmetDef.item_definition_id
+      );
+      expect(helmet).toBeDefined();
+      expect(helmet.quantity).toBe(1);
+    });
+
+    it('rejects when slot is empty', async () => {
+      await expect(
+        InventoryService.unequipItem(character.character_id, 'weapon')
+      ).rejects.toThrow(/empty/);
+    });
+
+    it('rejects when inventory is full', async () => {
+      const result = await InventoryService.addItems(character.character_id, [
+        { item_definition_id: helmetDef.item_definition_id, quantity: 1 }
+      ]);
+      await InventoryService.equipItem(character.character_id, result.added[0].player_item_id);
+
+      // Fill inventory
+      const fillerDef = await ItemDefinition.create({
+        name: 'Filler',
+        item_type: 'material',
+        rarity: 'common',
+        icon: 'filler',
+        max_stack: 1,
+        is_bind_on_pickup: false
+      });
+      for (let i = 0; i < 200; i++) {
+        await InventoryService.addItems(character.character_id, [
+          { item_definition_id: fillerDef.item_definition_id, quantity: 1 }
+        ]);
+      }
+
+      await expect(
+        InventoryService.unequipItem(character.character_id, 'helmet')
+      ).rejects.toThrow(/full/);
+    });
+  });
+
   describe('addItems', () => {
     it('creates a new PlayerItem row when inventory is empty', async () => {
       const result = await InventoryService.addItems(character.character_id, [
